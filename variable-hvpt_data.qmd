@@ -76,5 +76,125 @@ The following are the questions I will be attempting to address with this projec
 
 In order to address these, I will need to make subsets of the data where it is grouped in different ways (e.g. a subset).
 
+## Question A: What is the average VOT for /b/ and /p/ per speaker?
+
+First, isolate each consonant:
+
+```{r}
+#| label: isolate-b-per-talker
+
+# Talker 007
+
+b007 <- durations |> 
+  filter(talker_id == "007") |> 
+  filter(voicing == "voiced")
+
+# Talker 863
+
+b863 <- durations |> 
+  filter(talker_id == "863") |> 
+  filter(voicing == "voiced")
+
+# Talker 928
+
+b928 <- durations |> 
+  filter(talker_id == "928") |> 
+  filter(voicing == "voiced")
+
+# Talker 198
+
+b198 <- durations |> 
+  filter(talker_id == "198") |> 
+  filter(voicing == "voiced")
+
+# Talker 355
+
+b355 <- durations |> 
+  filter(talker_id == "355") |> 
+  filter(voicing == "voiced")
+
+# Talker 377
+
+b377 <- durations |> 
+  filter(talker_id == "377") |> 
+  filter(voicing == "voiced")
+
+```
+
+```{r}
+#| label: isolate-p-per-talker
+
+# Talker 007
+
+p007 <- durations |> 
+  filter(talker_id == "007") |> 
+  filter(voicing == "voiceless")
+
+# Talker 863
+
+p863 <- durations |> 
+  filter(talker_id == "863") |> 
+  filter(voicing == "voiceless")
+
+# Talker 928
+
+p928 <- durations |> 
+  filter(talker_id == "928") |> 
+  filter(voicing == "voiceless")
+
+# Talker 198
+
+p198 <- durations |> 
+  filter(talker_id == "198") |> 
+  filter(voicing == "voiceless")
+
+# Talker 355
+
+p355 <- durations |> 
+  filter(talker_id == "355") |> 
+  filter(voicing == "voiceless")
+
+# Talker 377
+
+p377 <- durations |> 
+  filter(talker_id == "377") |> 
+  filter(voicing == "voiceless")
+```
+
+### What is the average VOT for /b/ per talker?
+
+Based on the data below, we can see that there is quite a bit of variability between VOT for /b/ per talker. Talker 007 has a very small VOT compared to the rest, and upon further inspection, this is the result of one of their tokens having a very short lead VOT (around -20 ms) compared to other tokens, which is possibly due to the recording quality.
+
+```{r}
+# get means for each talker for VOT of /b/ and assign to vectors
+
+b_names <- c("007", "198", "355", "377", "863", "928")
+b_means <- c(mean(b007$VOT), mean(b198$VOT), mean(b355$VOT), mean(b377$VOT), mean(b863$VOT), mean(b928$VOT))
+
+# use the vectors to make a new df showing the mean VOT for /b/ for each talker
+
+b_VOT_talker <- tibble(
+  talker_id = b_names,
+  mean_VOT = b_means
+)
+```
+
+### What is the average VOT for /p/ per talker?
+
+Visually, the VOTs for /p/ are much less variable across talkers.
+
+```{r}
+# get means for each talker for VOT of /p/ and assign to vectors
+
+p_names <- c("007", "198", "355", "377", "863", "928")
+p_means <- c(mean(p007$VOT), mean(p198$VOT), mean(p355$VOT), mean(p377$VOT), mean(p863$VOT), mean(p928$VOT))
+
+# use vectors to make a new df showing the mean VOT for /p/ for each talker
+p_VOT_talker <- tibble(
+  talker_id = p_names,
+  mean_VOT = p_means
+)
+```
+
 
 
