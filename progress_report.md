@@ -1,7 +1,8 @@
 # Progress Report
 
 [First entry](#october-7-2025)\
-[Progress report 1](#progress-report-1)
+[Progress report 1](#progress-report-1)\
+[Progress report 2](#progress-report-2)
 
 ### October 7, 2025
 
@@ -41,4 +42,22 @@ However, after this, I can expand my analysis to the following questions:
 * ...between phonetic context (following vowel)?
     
 In order to perform the analyses to answer these questions and generate visualizations, my next step is to create subsets of the data.
+
+## Progress report 2
+
+### Completed
+
+Since the last progress report, I prepared a few of the necessary subsets of the data for analysis (e.g. a subset for all /b/ tokens together and a subset for all /p/ tokens together). Then, I started working on the analysis of differences in VOT between talkers for /b/ and /p/. [This analysis is included in the Quarto document with my data pipeline](variable-hvpt_data.qmd). 
+
+Additionally, this time was spent looking for additional sources of audio files from other HVPT studies or software to add to my project. Within this time, I was unable to find other open-source materials (audio files use as stimuli in training). I considered using audio files that are used in the software [English Accent Coach](https://www.englishaccentcoach.com/home), but decided against using this mainly because the audio files are not exactly open source/publicly accessible. While it's possible to retrieve them through web-scraping, the source folder where the files are stored are inaccessible, indicating they are not meant to be directly taken from the webpage.
+
+Ultimately, I decided to expand my analysis of the Nagle et al. (2025) stimuli to include an investigation of additional acoustic features other than VOT to get a more well-rounded understanding of the variability that is present in the input of an HVPT study. I will also incorporate tokens that were included in the 2-talker condition of this study (not included in the 6-talker condition) to analyze and compare variability present between conditions. More time was spent converting additional audio files to the proper form and researching Praat scripts to hopefully automatize the process of extracting information such as formant frequencies.
+
+### Sharing scheme
+
+The [data](clean-durations.csv) from this project is derived from the open-source audio files generously online shared by the authors of Nagle et al. (2025). I will not be including the raw files along with my data and data pipeline, rather instructions for others on how to access the audio files. My justification for this is that they are already openly accessible from the original authors and avoids any licensing issues that might arise by me including them on my own repository. I think it's also important to understand the context where the data comes from, and this exists on the OSF page were the audio files are available for anyone to use and download with proper attribution to the authors. Otherwise, the data (extracted acoustic values) will be publicly accessible on my repository.
+
+### License
+
+I chose the [Creative Commons Attribution 4.0 International License](https://choosealicense.com/licenses/cc-by-4.0/#) because it is the same as the one used for the materials from Nagle et al. (2025), and because my project is data, rather than something like software which would likely use a different kind of license. I chose the Creative Commons license with attribution because I believe it's good practice to not only give credit where it's due, but allow for transparency: If this data is used or shared with attribution to me, it is more easily traced back to the source where additional info or context is also present.
 
