@@ -11,11 +11,53 @@ library(tidyverse)
 library(readxl)
 ```
 
+# Prerequisites
+
+You must have the software [Praat](https://praat.org/) installed on your machine to 
+produce the acoustic values data.
+
+
+# Audio retrieval and raw data gathering
+
+This pipeline uses output from [Praat](https://praat.org/) using the training stimuli audio files from Nagle et al. (2025). These audio files are publicly accessible via their [OSF page](https://osf.io/mnks9/files).
+
+**Follow these steps for preparing the sound files for analyses:**
+
+1. Download the audio files.
+    * On the [Nagle et al. (2025) OSF Files page](https://osf.io/mnks9/files), navigate to `1 Materials` > `Training Materials` > `Training Stimuli 6-Talker Group` and click `Download As Zip` in the right-hand corner. 
+    * Download the zip file to this directory (repository `How-Variable-Is-HVPT`) and extract the files by double-clicking on the zip file. 
+    * Delete the *old* zip file
+    * Re-name this folder as `sound-files`. **It is very important that you do this.**
+    
+2. Convert the audio to wav files for Praat.
+    * Follow the [audio conversion instructions](audio-conversion-instructions.md) for converting the mp3 files to wav files, which are necessary for input into Praat.
+
+**Follow these steps for performing acoustic analysis in Praat**
+
+1. Download [this Praat script](https://github.com/wendyelviragarcia/TextGrid_labels_extraction/blob/main/extracts_interval_labels.praat) and save it to your `sound-files` folder.
+    * Click "Download as raw file"
+    
+2. **The wav files and TextGrids must all be in the same folder**
+    * Download my [TextGrids](textgrids-VOT/) into the `sound-files` folder. Alternatively, you can copy them within R under the `Files` tab, checking the box next to the `textgrids` folder, clicking the gear icon, then `Copy To...` and selecting the `sound-files` folder.
+    * It will likely add them as a folder within the `sound-files` folder. You will need to extract them and move them out, into the `sound-files` folder (you can highlight all the files and move or copy them to the `sound-files` folder).
+    
+2. Open Praat. In Praat, click `Open` > `Read from file...` and select the Praat script you just saved.
+
+3. In the Praat script window, click `Run` (or Cmd/Ctrl + R)
+
+4. When the form appears, (relative paths are not working, for now, you'll have to go to your file explorer and copy your full file path for `sound-files` and enter it into `Directory name` and **be sure to close it with a final slash**).
+
+5. In `logfile` enter `raw-durations`
+
+6. Click `okay` and this will save the text file to `sound-files`.
+
+You're all done! You can now move on to reading in the `raw-durations` file into R.
+
 # Read in raw data
 ```{r}
 #| label: read-in
 
-durations <- read_excel("raw_durations.xlsx")
+durations <- read.delim("./sound-files/raw-durations.txt", header = FALSE)
 durations
 ```
 
@@ -27,6 +69,7 @@ The raw data is the output of a [Praat script](https://www.acsu.buffalo.edu/~cdi
 
 My goal is to compare VOT durations across speakers used for HVPT stimuli, so in order to get to this point the raw data needs to be transformed and tidied. Thus, I will need a new data frame with the following components:
 
+* Rename columns
 * All empty Praat TextGrid tiers removed
 * New column with VOT duration calculated (`end` - `start`) *in ms*
     * *Note that lead VOT is negative*
@@ -34,6 +77,33 @@ My goal is to compare VOT durations across speakers used for HVPT stimuli, so in
     
 ```{r}
 #| label: data-transform
+
+# rename columns 
+durations <- durations |> 
+  rename(file = "V1",
+         label = "V2",
+         start = "V3",
+         end = "V4")
+
+# extract variables from audio file names
+durations <- durations |> 
+  separate_wider_regex(
+    file,
+    patterns = c(
+      word = "^[bp].+",
+      "_",
+      voicing = "voiced|voiceless",
+      "_",
+      sex = ".",
+      "_",
+      talker_id = "\\d+",
+      "[_.]",
+      rest = "\\S+")
+  )
+
+# we don't need that rest column
+durations <- durations |> 
+  select(word:talker_id, label:end)
 
 # get rid of rows with empty intervals (no VOT info)
 durations <- durations |> 
@@ -43,17 +113,6 @@ durations <- durations |>
 durations <- durations |> 
   mutate(VOT = (end - start)*1000)
 
-# get data from file names and create columns
-durations <- durations |> 
-  separate_wider_delim(
-    file,
-    delim = "_",
-    names = c("word", "voicing", "sex", "talker_id", NA)
-  )
-  
-# rename label column to vot_type
-durations <- durations |> 
-  rename(vot_type = label)
 ```
 
 ## Write cleaned data to new file
@@ -195,6 +254,3 @@ p_VOT_talker <- tibble(
   mean_VOT = p_means
 )
 ```
-
-
-
