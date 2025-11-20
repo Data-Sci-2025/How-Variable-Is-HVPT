@@ -21,13 +21,20 @@ produce the acoustic values data.
 
 This pipeline uses output from [Praat](https://praat.org/) using the training stimuli audio files from Nagle et al. (2025). These audio files are publicly accessible via their [OSF page](https://osf.io/mnks9/files).
 
-**Follow these steps for preparing the sound files for analyses:**
+## **Follow these steps for preparing the sound files for analyses:**
 
-1. Download the audio files.
-    * On the [Nagle et al. (2025) OSF Files page](https://osf.io/mnks9/files), navigate to `1 Materials` > `Training Materials` > `Training Stimuli 6-Talker Group` and click `Download As Zip` in the right-hand corner. 
-    * Download the zip file to this directory (repository `How-Variable-Is-HVPT`) and extract the files by double-clicking on the zip file. 
-    * Delete the *old* zip file
-    * Re-name this folder as `sound-files`. **It is very important that you do this.**
+### Download the audio files
+
+1. On the [Nagle et al. (2025) OSF Files page](https://osf.io/mnks9/files), navigate to `1 Materials` > `Training Materials` > `Training Stimuli 6-Talker Group` and click `Download As Zip` in the right-hand corner. 
+    
+2. Download the zip file to this directory (repository `How-Variable-Is-HVPT`) and extract the files by double-clicking on the zip file. 
+    * Delete the *old* .zip file
+
+3. Repeat Steps 2-3 for `Training Stimuli 2-Talker Group` from the same OSF folder.
+
+### Rename the audio file folders
+
+1. 
     
 2. Convert the audio to wav files for Praat.
     * Follow the [audio conversion instructions](audio-conversion-instructions.md) for converting the mp3 files to wav files, which are necessary for input into Praat.
