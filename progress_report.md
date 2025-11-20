@@ -2,7 +2,8 @@
 
 [First entry](#october-7-2025)\
 [Progress report 1](#progress-report-1)\
-[Progress report 2](#progress-report-2)
+[Progress report 2](#progress-report-2)\
+[Progress report 3](#progress-report-3)
 
 ### October 7, 2025
 
@@ -60,4 +61,20 @@ The [data](clean-durations.csv) from this project is derived from the open-sourc
 ### License
 
 I chose the [Creative Commons Attribution 4.0 International License](https://choosealicense.com/licenses/cc-by-4.0/#) because it is the same as the one used for the materials from Nagle et al. (2025), and because my project is data, rather than something like software which would likely use a different kind of license. I chose the Creative Commons license with attribution because I believe it's good practice to not only give credit where it's due, but allow for transparency: If this data is used or shared with attribution to me, it is more easily traced back to the source where additional info or context is also present.
+
+# Progress report 3
+
+## Completed work & File organization
+
+Since I made some more headway on my analysis at the time of my previous progress report, the time spent between then and now has mostly been dedicated to improving the reproducability of my code and materials. I learned a little about rPraat and used it to automate the process of extracting durations from labeled VOT intervals in TextGrid files, which replaces the need for using a Praat script itself. I also learned from Dan how to make shell script so users can easily run the ffmpeg code to do the audio conversions. The rPraat code will be included in my [variable-hvpt_data.md](variable-hvpt_data.md), which is my main pipeline, since it will combine with the names of the audio files to form a larger dataframe that shows all the important variables associated with each file: Word, voicing, sex, and talker_id.
+
+However, in order to first get to that point, the audio files need to be retrieved and converted, and TextGrids made for input into the pipeline. The instructions for doing these things will live (and most already do) outside the pipeline as a sort of "prerequisite" step for those that wish to ultimately extract acoustic information from audio files and run an analysis on them. Those instructions are currently found at [audio-conversion-instructions.md](audio-conversion-instructions.md) and [raw-data-retrieval-instructions.md](raw-data-retrieval-instructions.md).
+
+## Quarto document info
+
+The pipeline, [variable-hvpt_data.md](variable-hvpt_data.md) is set as a GitHub-flavored markdown file (gfm). I'm keeping it as this type because I think it's important for potential users to be able see the pipeline and review it before running it themselves, and this I would expect to be done directly on GitHub.
+
+## Data
+
+At this point, my data files have not changed (I've made the code to be reproducible on others' machines, but now it's not working on mine because of how my directly is currently set up, so this is a to-do item). The [clean-durations.csv](clean-durations.csv) will be updated soon to reflect changes I made in the TextGrid boundary-retrieval process (the appearance may change slightly but the values will be the same). All other analyses and data are part of the [variable-hvpt_data.md](variable-hvpt_data.md), which will soon include plots/visualizations on top of analysis results.
 
