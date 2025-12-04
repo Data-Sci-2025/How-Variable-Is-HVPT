@@ -7,70 +7,25 @@ format: gfm
 #| label: prereqs
 #| include: false
 
-library(tidyverse)
 library(readxl)
+library(tidyverse)
+library(dplyr)
+library(rPraat)
+library(purrr)
+library(tidyr)
+library(janitor)
+library(phonR)
 ```
 
 # Prerequisites
 
-You must have the software [Praat](https://praat.org/) installed on your machine to 
-produce the acoustic values data.
+You must have the software [Praat](https://praat.org/) installed on your machine to produce the acoustic values data.
 
 
 # Audio retrieval and raw data gathering
 
-This pipeline uses output from [Praat](https://praat.org/) using the training stimuli audio files from Nagle et al. (2025). These audio files are publicly accessible via their [OSF page](https://osf.io/mnks9/files).
+This pipeline uses output from [Praat](https://praat.org/) using the training stimuli audio files from Nagle et al. (2025). These audio files are publicly accessible via their [OSF page](https://osf.io/mnks9/files). **Follow [these](raw-data-retrieval-instructions.md) steps for preparing the sound files for analyses:**
 
-## **Follow these steps for preparing the sound files for analyses:**
-
-### Download the audio files
-
-1. On the [Nagle et al. (2025) OSF Files page](https://osf.io/mnks9/files), navigate to `1 Materials` > `Training Materials` > `Training Stimuli 6-Talker Group` and click `Download As Zip` in the right-hand corner. 
-    
-2. Download the zip file to this directory (repository `How-Variable-Is-HVPT`) and extract the files by double-clicking on the zip file. 
-    * Delete the *old* .zip file
-
-3. Repeat Steps 2-3 for `Training Stimuli 2-Talker Group` from the same OSF folder.
-
-### Rename the audio file folders
-
-1. 
-    
-2. Convert the audio to wav files for Praat.
-    * Follow the [audio conversion instructions](audio-conversion-instructions.md) for converting the mp3 files to wav files, which are necessary for input into Praat.
-
-**Follow these steps for performing acoustic analysis in Praat**
-
-1. Download [this Praat script](https://github.com/wendyelviragarcia/TextGrid_labels_extraction/blob/main/extracts_interval_labels.praat) and save it to your `sound-files` folder.
-    * Click "Download as raw file"
-    
-2. **The wav files and TextGrids must all be in the same folder**
-    * Download my [TextGrids](textgrids-VOT/) into the `sound-files` folder. Alternatively, you can copy them within R under the `Files` tab, checking the box next to the `textgrids` folder, clicking the gear icon, then `Copy To...` and selecting the `sound-files` folder.
-    * It will likely add them as a folder within the `sound-files` folder. You will need to extract them and move them out, into the `sound-files` folder (you can highlight all the files and move or copy them to the `sound-files` folder).
-    
-2. Open Praat. In Praat, click `Open` > `Read from file...` and select the Praat script you just saved.
-
-3. In the Praat script window, click `Run` (or Cmd/Ctrl + R)
-
-4. When the form appears, (relative paths are not working, for now, you'll have to go to your file explorer and copy your full file path for `sound-files` and enter it into `Directory name` and **be sure to close it with a final slash**).
-
-5. In `logfile` enter `raw-durations`
-
-6. Click `okay` and this will save the text file to `sound-files`.
-
-You're all done! You can now move on to reading in the `raw-durations` file into R.
-
-# Read in raw data
-```{r}
-#| label: read-in
-
-durations <- read.delim("./sound-files/raw-durations.txt", header = FALSE)
-durations
-```
-
-## Information about raw data
-
-The raw data is the output of a [Praat script](https://www.acsu.buffalo.edu/~cdicanio/scripts/Boundary_Extractor.praat) which retrieves timestamps for boundaries in TextGrids. I hand-annotated VOT for all 60 audio files used in the 6-talker condition in the original study (Nagle et al., 2025). The output includes the name of the TextGrid file for each audio file, the tier used for annotation and labels that I input here to indicate VOT ("lead" refers to negative VOT and "lag" refers to positive VOT), then the start time for each interval and the end time for each interval. There are 60 observations total, accounting for 2 segments x 5 vowel contexts x 6 talkers.
 
 # Data transformation and tidying
 
@@ -78,22 +33,60 @@ My goal is to compare VOT durations across speakers used for HVPT stimuli, so in
 
 * Rename columns
 * All empty Praat TextGrid tiers removed
-* New column with VOT duration calculated (`end` - `start`) *in ms*
+* New column with VOT duration calculated *in ms*
     * *Note that lead VOT is negative*
+* Columns for vowel F1, F2
 * Extract information from file names and move to new columns: Talker ID, gender/sex, word produced, and voicing
-    
-```{r}
-#| label: data-transform
 
-# rename columns 
-durations <- durations |> 
-  rename(file = "V1",
-         label = "V2",
-         start = "V3",
-         end = "V4")
+```{r}
+#| label: import-data
+
+# function for getting VOT duration
+functionDur <- function(x) {
+  tg <- tg.read(x)
+  int <- which(pluck(tg, "VOT", "label") != "")
+  tg.getIntervalDuration(tg, "VOT", int)
+}
+
+# get all TextGrid filepaths
+paths <- list.files("/Users/sarahschaech/Desktop/all_stuff", pattern = "[.]TextGrid$", full.names = TRUE)
+
+# make a tibble with the filenames as a column, then map the function onto each to get durations 
+filesDf <- tibble(file = paths)
+
+filesDf <- filesDf |> 
+  mutate(VOT_duration_ms = map_dbl(file, functionDur))
+         
+# now rework the filenames using basename()
+filesDf <- filesDf |> 
+  mutate(file = basename(paths), .before = VOT_duration_ms)
+
+# read in formant output
+formants <- read_tsv("/Users/sarahschaech/Desktop/all_stuff/formants_all.txt")
+
+# add row id
+formants <- formants |> 
+  mutate(id = row_number(), .before = phone)
+
+# get filepath names
+formantsFiles <- list.files("/Users/sarahschaech/Desktop/all_stuff", pattern = "[.]TextGrid$", full.names = FALSE)
+
+# make filepath names into df + add id row
+formantsTibble <- tibble(file = formantsFiles)
+
+formantsTibble <- formantsTibble |> 
+  mutate(id = row_number(), .before = file)
+
+# left join the file df and the formants df
+vowelFormants <- formantsTibble |> 
+  left_join(formants)
+
+# left join with the VOT duration data
+all_data <- vowelFormants |> 
+  left_join(filesDf)
 
 # extract variables from audio file names
-durations <- durations |> 
+all_data <- all_data |> 
   separate_wider_regex(
     file,
     patterns = c(
@@ -109,17 +102,20 @@ durations <- durations |>
   )
 
 # we don't need that rest column
-durations <- durations |> 
-  select(word:talker_id, label:end)
+all_data <- all_data |> 
+  select(!c(rest, id, phone))
 
-# get rid of rows with empty intervals (no VOT info)
-durations <- durations |> 
-  filter(label == "lead" | label == "lag")
+# make duration column into ms
+all_data <- all_data |> 
+  mutate(VOT_duration_ms = VOT_duration_ms*1000, .after = talker_id)
 
-# add a column to get VOT duration
-durations <- durations |> 
-  mutate(VOT = (end - start)*1000)
+# add condition information
+all_data <- all_data |> 
+  mutate(two_talker = ifelse(talker_id == "928" | talker_id == "198", "y", "n"),
+         six_talker = ifelse(word != "bacho" & word != "belo" & word != "bicho" & word != "bolo" & word != "bumo" & word != "pacho" & word != "pelo" & word != "picho" & word != "polo" & word != "pumo", "y", "n"))
 
+# clean the formant col names to be safe
+all_data <- clean_names(all_data)
 ```
 
 ## Write cleaned data to new file
@@ -128,60 +124,61 @@ durations <- durations |>
 #| label: write-data
 
 # note that this is only the cleaned-up version of the full dataset
-write_csv(durations, "clean-durations.csv")
+write_csv(all_data, "stimuli-acoustics.csv")
 ```
 
 # Prepare subsets for analyses
 
 The following are the questions I will be attempting to address with this project:
 
-* To what extent do talkers vary in their productions of word-initial Spanish segments /b/ and /p/? (In other words, varied are the VOT durations for each segment between talkers and within talkers?)
+* To what extent do talkers vary in their productions of word-initial Spanish segments /b/ and /p/? (In other words, how varied are the VOT durations for each segment between talkers and within talkers?)
 * ...between sex?
-* ...between voiced vs voiceless segments?
 * ...between phonetic contexts (following vowel)?
 
 In order to address these, I will need to make subsets of the data where it is grouped in different ways (e.g. a subset).
 
+# VOT Analyses
+
 ## Question A: What is the average VOT for /b/ and /p/ per speaker?
 
-First, isolate each consonant:
+First, isolate data for each consonant per talker:
 
 ```{r}
 #| label: isolate-b-per-talker
 
 # Talker 007
 
-b007 <- durations |> 
+b007 <- all_data |> 
   filter(talker_id == "007") |> 
   filter(voicing == "voiced")
 
 # Talker 863
 
-b863 <- durations |> 
+b863 <- all_data |> 
   filter(talker_id == "863") |> 
   filter(voicing == "voiced")
 
 # Talker 928
 
-b928 <- durations |> 
+b928 <- all_data |> 
   filter(talker_id == "928") |> 
   filter(voicing == "voiced")
 
 # Talker 198
 
-b198 <- durations |> 
+b198 <- all_data |> 
   filter(talker_id == "198") |> 
   filter(voicing == "voiced")
 
 # Talker 355
 
-b355 <- durations |> 
+b355 <- all_data |> 
   filter(talker_id == "355") |> 
   filter(voicing == "voiced")
 
 # Talker 377
 
-b377 <- durations |> 
+b377 <- all_data |> 
   filter(talker_id == "377") |> 
   filter(voicing == "voiced")
 
@@ -192,42 +189,42 @@ b377 <- durations |>
 
 # Talker 007
 
-p007 <- durations |> 
+p007 <- all_data |> 
   filter(talker_id == "007") |> 
   filter(voicing == "voiceless")
 
 # Talker 863
 
-p863 <- durations |> 
+p863 <- all_data |> 
   filter(talker_id == "863") |> 
   filter(voicing == "voiceless")
 
 # Talker 928
 
-p928 <- durations |> 
+p928 <- all_data |> 
   filter(talker_id == "928") |> 
   filter(voicing == "voiceless")
 
 # Talker 198
 
-p198 <- durations |> 
+p198 <- all_data |> 
   filter(talker_id == "198") |> 
   filter(voicing == "voiceless")
 
 # Talker 355
 
-p355 <- durations |> 
+p355 <- all_data |> 
   filter(talker_id == "355") |> 
   filter(voicing == "voiceless")
 
 # Talker 377
 
-p377 <- durations |> 
+p377 <- all_data |> 
   filter(talker_id == "377") |> 
   filter(voicing == "voiceless")
 ```
 
-### What is the average VOT for /b/ per talker?
+### What is the average VOT for /b/ per talker (across all 80 tokens)?
 
 Based on the data below, we can see that there is quite a bit of variability between VOT for /b/ per talker. Talker 007 has a very small VOT compared to the rest, and upon further inspection, this is the result of one of their tokens having a very short lead VOT (around -20 ms) compared to other tokens, which is possibly due to the recording quality.
 
@@ -235,7 +232,7 @@ Based on the data below, we can see that there is quite a bit of variability bet
 # get means for each talker for VOT of /b/ and assign to vectors
 
 b_names <- c("007", "198", "355", "377", "863", "928")
-b_means <- c(mean(b007$VOT), mean(b198$VOT), mean(b355$VOT), mean(b377$VOT), mean(b863$VOT), mean(b928$VOT))
+b_means <- c(mean(b007$vot_duration_ms), mean(b198$vot_duration_ms), mean(b355$vot_duration_ms), mean(b377$vot_duration_ms), mean(b863$vot_duration_ms), mean(b928$vot_duration_ms))
 
 # use the vectors to make a new df showing the mean VOT for /b/ for each talker
 
@@ -245,7 +242,7 @@ b_VOT_talker <- tibble(
 )
 ```
 
-### What is the average VOT for /p/ per talker?
+### What is the average VOT for /p/ per talker (across all 80 tokens)?
 
 Visually, the VOTs for /p/ are much less variable across talkers.
 
@@ -253,7 +250,7 @@ Visually, the VOTs for /p/ are much less variable across talkers.
 # get means for each talker for VOT of /p/ and assign to vectors
 
 p_names <- c("007", "198", "355", "377", "863", "928")
-p_means <- c(mean(p007$VOT), mean(p198$VOT), mean(p355$VOT), mean(p377$VOT), mean(p863$VOT), mean(p928$VOT))
+p_means <- c(mean(p007$vot_duration_ms), mean(p198$vot_duration_ms), mean(p355$vot_duration_ms), mean(p377$vot_duration_ms), mean(p863$vot_duration_ms), mean(p928$vot_duration_ms))
 
 # use vectors to make a new df showing the mean VOT for /p/ for each talker
 p_VOT_talker <- tibble(
@@ -261,3 +258,559 @@ p_VOT_talker <- tibble(
   mean_VOT = p_means
 )
 ```
+
+#### Plot means per talker for each segment
+
+```{r}
+#| label: mean-b-vot-by-talker
+
+# mean /b/ VOT by talker all conditions
+b_VOT_talker |> 
+  ggplot(aes(x = talker_id, y = mean_VOT)) +
+  geom_point(size = 4, color = "darkblue") +
+  theme_bw() +
+  labs(
+    title = "Mean /b/ VOT by talker (all conditions)",
+    x = "Talker",
+    y = "Mean VOT (ms)"
+  )
+```
+
+```{r}
+#| label: mean-p-vot-by-talker
+
+# mean /p/ VOT by talker all conditions
+p_VOT_talker |> 
+  ggplot(aes(x = talker_id, y = mean_VOT)) +
+  geom_point(size = 4, color = "darkred") +
+  theme_bw() +
+  labs(
+    title = "Mean /p/ VOT by talker (all conditions)",
+    x = "Talker",
+    y = "Mean VOT (ms)"
+  )
+```
+
+### What is the average VOT for /b/ per talker in the 6-talker condition? For /p/?
+
+```{r}
+# isolate
+sixb007 <- all_data |> 
+  filter(six_talker == "y" & talker_id == "007" & voicing == "voiced")
+
+sixb198 <- all_data |> 
+  filter(six_talker == "y" & talker_id == "198" & voicing == "voiced")
+
+sixb355 <- all_data |> 
+  filter(six_talker == "y" & talker_id == "355" & voicing == "voiced")
+
+sixb377 <- all_data |> 
+  filter(six_talker == "y" & talker_id == "377" & voicing == "voiced")
+
+sixb863 <- all_data |> 
+  filter(six_talker == "y" & talker_id == "863" & voicing == "voiced")
+
+sixb928 <- all_data |> 
+  filter(six_talker == "y" & talker_id == "928" & voicing == "voiced")
+
+# get means
+sixb_means <- c(mean(sixb007$vot_duration_ms), mean(sixb198$vot_duration_ms), mean(sixb355$vot_duration_ms), mean(sixb377$vot_duration_ms), mean(sixb863$vot_duration_ms), mean(sixb928$vot_duration_ms))
+
+# tibble
+bsix_means <- tibble(
+  talker_id = b_names,
+  mean_VOT = sixb_means
+)
+```
+
+```{r}
+#| label: mean-vot-b-talker-six
+
+
+# plot
+bsix_means |> 
+  ggplot(aes(talker_id, mean_VOT))+
+  geom_point(size = 4, color = "darkblue")+
+  theme_bw() +
+  labs(
+    title = "Mean /b/ VOT by talker (six-talker condition)",
+    x = "Talker",
+    y = "mean VOT (ms)"
+  )
+```
+
+```{r}
+#| label: mean-vot-p-talker-six
+
+## for p
+# isolate
+sixp007 <- all_data |> 
+  filter(six_talker == "y" & talker_id == "007" & voicing == "voiceless")
+
+sixp198 <- all_data |> 
+  filter(six_talker == "y" & talker_id == "198" & voicing == "voiceless")
+
+sixp355 <- all_data |> 
+  filter(six_talker == "y" & talker_id == "355" & voicing == "voiceless")
+
+sixp377 <- all_data |> 
+  filter(six_talker == "y" & talker_id == "377" & voicing == "voiceless")
+
+sixp863 <- all_data |> 
+  filter(six_talker == "y" & talker_id == "863" & voicing == "voiceless")
+
+sixp928 <- all_data |> 
+  filter(six_talker == "y" & talker_id == "928" & voicing == "voiceless")
+
+# get means
+sixp_means <- c(mean(sixp007$vot_duration_ms), mean(sixp198$vot_duration_ms), mean(sixp355$vot_duration_ms), mean(sixp377$vot_duration_ms), mean(sixp863$vot_duration_ms), mean(sixp928$vot_duration_ms))
+
+# make tibble
+psix_means <- tibble(
+  talker_id = b_names,
+  mean_VOT = sixp_means
+)
+
+# plot
+psix_means |> 
+  ggplot(aes(talker_id, mean_VOT))+
+  geom_point(size = 4, color = "darkred")+
+  theme_bw() +
+  labs(
+    title = "Mean /p/ VOT by talker (six-talker condition)",
+    x = "Talker",
+    y = "mean VOT (ms)"
+  )
+```
+
+
+### What is the average VOT for /b/ per talker in the 2-talker condition? For /p/?
+
+```{r}
+#| label: vot-b-talker-two
+
+# isolate
+twob198 <- all_data |> 
+  filter(two_talker == "y" & talker_id == "198" & voicing == "voiced")
+
+twob928 <- all_data |> 
+  filter(two_talker == "y" & talker_id == "928" & voicing == "voiced")
+
+# get means
+twob_means <- c(mean(twob198$vot_duration_ms), mean(twob928$vot_duration_ms))
+
+# tibble
+btwo_means <- tibble(
+  talker_id = c("198", "928"),
+  mean_VOT = twob_means
+)
+
+# plot
+btwo_means |> 
+  ggplot(aes(talker_id, mean_VOT))+
+  geom_point(size = 4, color = "darkblue")+
+  theme_bw() +
+  labs(
+    title = "Mean /b/ VOT by talker (two-talker condition)",
+    x = "Talker",
+    y = "mean VOT (ms)"
+  )
+```
+
+```{r}
+#| label: vot-p-talker-two
+## for p
+# isolate
+
+twop198 <- all_data |> 
+  filter(two_talker == "y" & talker_id == "198" & voicing == "voiceless")
+
+twop928 <- all_data |> 
+  filter(two_talker == "y" & talker_id == "928" & voicing == "voiceless")
+
+# get means
+twop_means <- c(mean(twop198$vot_duration_ms), mean(twop928$vot_duration_ms))
+
+# make tibble
+ptwo_means <- tibble(
+  talker_id = c("198", "928"),
+  mean_VOT = twop_means
+)
+
+# plot
+ptwo_means |> 
+  ggplot(aes(talker_id, mean_VOT))+
+  geom_point(size = 4, color = "darkred")+
+  theme_bw() +
+  labs(
+    title = "Mean /p/ VOT by talker (two-talker condition)",
+    x = "Talker",
+    y = "mean VOT (ms)"
+  )
+```
+
+
+### What is the average VOT for /b/ per sex? For /p/? (All, 6-talker, 2-talker)
+
+```{r}
+#| label: vot-b-by-sex-all
+
+### all conditions: /b/
+
+## isolate
+
+female_b <- all_data |> 
+  filter(sex == "f", voicing == "voiced") |> 
+  summarize(mean = mean(vot_duration_ms))
+
+male_b <- all_data |> 
+  filter(sex == "m", voicing == "voiced") |> 
+  summarize(mean = mean(vot_duration_ms))
+
+sexb_vot <- tibble(
+  sex = c("female", "male"),
+  mean_VOT = c(female_b$mean, male_b$mean)
+)
+
+# plot
+sexb_vot |> 
+  ggplot(aes(sex, mean_VOT)) +
+  geom_point(size = 4) +
+  theme_bw() +
+  labs(
+    title = "Mean /b/ VOT by sex (all conditions)",
+    x = "Sex",
+    y = "Mean VOT (ms)"
+  )
+```
+
+```{r}
+#| label: vot-p-by-sex-all
+
+### all conditions /p/
+
+## isolate
+
+female_p <- all_data |> 
+  filter(sex == "f", voicing == "voiceless") |> 
+  summarize(mean = mean(vot_duration_ms))
+
+male_p <- all_data |> 
+  filter(sex == "m", voicing == "voiceless") |> 
+  summarize(mean = mean(vot_duration_ms))
+
+sexp_vot <- tibble(
+  sex = c("female", "male"),
+  mean_VOT = c(female_p$mean, male_p$mean)
+)
+
+# plot
+sexp_vot |> 
+  ggplot(aes(sex, mean_VOT)) +
+  geom_point(size = 4) +
+  theme_bw() +
+  labs(
+    title = "Mean /p/ VOT by sex (all conditions)",
+    x = "Sex",
+    y = "Mean VOT (ms)"
+  )
+```
+
+```{r}
+#| label: vot-b-by-sex-six
+
+### six-talker condition: /b/
+
+## isolate
+
+female_bsix <- all_data |> 
+  filter(sex == "f", voicing == "voiced", six_talker == "y") |> 
+  summarize(mean = mean(vot_duration_ms))
+
+male_bsix <- all_data |> 
+  filter(sex == "m", voicing == "voiced", six_talker == "y") |> 
+  summarize(mean = mean(vot_duration_ms))
+
+sexb_vot6 <- tibble(
+  sex = c("female", "male"),
+  mean_VOT = c(female_bsix$mean, male_bsix$mean)
+)
+
+# plot
+sexb_vot6 |> 
+  ggplot(aes(sex, mean_VOT)) +
+  geom_point(size = 4) +
+  theme_bw() +
+  labs(
+    title = "Mean /b/ VOT by sex (six-talker condition)",
+    x = "Sex",
+    y = "Mean VOT (ms)"
+  )
+```
+
+```{r}
+#| label: vot-p-by-sex-six
+
+### six-talker condition: /p/
+
+## isolate
+
+female_psix <- all_data |> 
+  filter(sex == "f", voicing == "voiceless", six_talker == "y") |> 
+  summarize(mean = mean(vot_duration_ms))
+
+male_psix <- all_data |> 
+  filter(sex == "m", voicing == "voiceless", six_talker == "y") |> 
+  summarize(mean = mean(vot_duration_ms))
+
+sexp_vot6 <- tibble(
+  sex = c("female", "male"),
+  mean_VOT = c(female_psix$mean, male_psix$mean)
+)
+
+# plot
+sexp_vot6 |> 
+  ggplot(aes(sex, mean_VOT)) +
+  geom_point(size = 4) +
+  theme_bw() +
+  labs(
+    title = "Mean /p/ VOT by sex (six-talker condition)",
+    x = "Sex",
+    y = "Mean VOT (ms)"
+  )
+```
+
+```{r}
+#| label: vot-b-by-sex-two
+
+### two-talker condition: /b/
+
+# isolate
+female_btwo <- all_data |> 
+  filter(sex == "f", voicing == "voiced", two_talker == "y") |> 
+  summarize(mean = mean(vot_duration_ms))
+
+male_btwo <- all_data |> 
+  filter(sex == "m", voicing == "voiced", two_talker == "y") |> 
+  summarize(mean = mean(vot_duration_ms))
+
+sexb_vot2 <- tibble(
+  sex = c("female", "male"),
+  mean_VOT = c(female_btwo$mean, male_btwo$mean)
+)
+
+sexb_vot2 |> 
+  ggplot(aes(sex, mean_VOT)) +
+  geom_point(size = 4) +
+  theme_bw() +
+  labs(
+    title = "Mean /b/ VOT by sex (two-talker condition)",
+    x = "Sex",
+    y = "Mean VOT (ms)"
+  )
+```
+
+```{r}
+#| label: vot-p-by-sex-two
+
+### two-talker condition: /p/
+
+# isolate
+female_ptwo <- all_data |> 
+  filter(sex == "f", voicing == "voiceless", two_talker == "y") |> 
+  summarize(mean = mean(vot_duration_ms))
+
+male_ptwo <- all_data |> 
+  filter(sex == "m", voicing == "voiceless", two_talker == "y") |> 
+  summarize(mean = mean(vot_duration_ms))
+
+sexp_vot2 <- tibble(
+  sex = c("female", "male"),
+  mean_VOT = c(female_ptwo$mean, male_ptwo$mean)
+)
+
+sexp_vot2 |> 
+  ggplot(aes(sex, mean_VOT)) +
+  geom_point(size = 4) +
+  theme_bw() +
+  labs(
+    title = "Mean /p/ VOT by sex (two-talker condition)",
+    x = "Sex",
+    y = "Mean VOT (ms)"
+  )
+```
+
+# Vowel Formant Analyses (Vowel spaces)
+
+Vowel space R code sourced and slightly modified from Joey Stanley [(website)](https://joeystanley.com/blog/making-vowel-plots-in-r-part-1/).
+
+## Vowel space per talker, per segment
+
+```{r}
+# add vowel info to all_data
+vowel_data <- all_data |> 
+  separate_wider_regex(
+    word,
+    patterns = c(
+      segment = "^[bp]",
+      vowel = "[aeiou]",
+      right_context = ".+"
+    )
+  )
+
+# get means for all vowels
+vowel_means <- vowel_data |> 
+  summarize(f1_mean = mean(f1_mean),
+            f2_mean = mean(f2_mean),
+            .by = vowel)
+```
+
+```{r}
+#| label: vowel-space-80
+# this plot shows the vowel space for the entire set of speakers for all 80 tokens
+vowel_data |> 
+  ggplot(aes(x = f2_mean, y = f1_mean, color = vowel, label = vowel)) +
+  geom_point()+
+  geom_label(data = vowel_means, color = "black") +
+  stat_ellipse() +
+  scale_x_reverse() + scale_y_reverse() +
+  scale_color_discrete(breaks = c("a", "e", "i", "o", "u")) +
+  guides(color = "none") +
+  theme_classic() +
+  labs(
+    title = "Vowel space calculated from all 80 tokens",
+    x = "F2",
+    y = "F1"
+  )
+
+```
+
+## Vowel space for /b/, 6-talker condition
+
+```{r}
+#| label: vowel-space-b-six
+
+
+# subset of data for /b/ in six-talker condition
+bvowel_six <- vowel_data |> 
+  filter(segment == "b" & six_talker == "y")
+
+# df of the mean of each formant for each vowel across talkers w/ /b/ in six-talker condition
+bvowel_sixmeans <- bvowel_six |> 
+  summarize(f1_mean = mean(f1_mean),
+            f2_mean = mean(f2_mean),
+            .by = vowel)
+
+# plot
+bvowel_six |> 
+  ggplot(aes(x = f2_mean, y = f1_mean, color = vowel, label = vowel)) +
+  geom_point()+
+  geom_label(data = bvowel_sixmeans, color = "black") +
+  stat_ellipse() +
+  scale_x_reverse() + scale_y_reverse() +
+  scale_color_discrete(breaks = c("a", "e", "i", "o", "u")) +
+  guides(color = "none") +
+  theme_classic() +
+  labs(
+    title = "Vowel space calculated from all /b/ tokens in six-talker condition",
+    x = "F2",
+    y = "F1"
+  )
+```
+
+## Vowel space for /p/, 6-talker condition
+
+```{r}
+#| label: vowel-space-p-six
+
+# subset of data for /b/ in six-talker condition
+pvowel_six <- vowel_data |> 
+  filter(segment == "p" & six_talker == "y")
+
+# df of the mean of each formant for each vowel across talkers w/ /p/ in six-talker condition
+pvowel_sixmeans <- pvowel_six |> 
+  summarize(f1_mean = mean(f1_mean),
+            f2_mean = mean(f2_mean),
+            .by = vowel)
+
+# plot
+pvowel_six |> 
+  ggplot(aes(x = f2_mean, y = f1_mean, color = vowel, label = vowel)) +
+  geom_point()+
+  geom_label(data = pvowel_sixmeans, color = "black") +
+  stat_ellipse() +
+  scale_x_reverse() + scale_y_reverse() +
+  scale_color_discrete(breaks = c("a", "e", "i", "o", "u")) +
+  guides(color = "none") +
+  theme_classic() +
+  labs(
+    title = "Vowel space calculated from all /p/ tokens in six-talker condition",
+    x = "F2",
+    y = "F1"
+  )
+```
+
+## Vowel space for /b/, 2-talker condition
+
+```{r}
+#| label: vowel-space-b-two
+
+# subset of data for /b/ in two-talker condition
+bvowel_two <- vowel_data |> 
+  filter(segment == "b" & two_talker == "y")
+
+# df of the mean of each formant for each vowel across talkers w/ /b/ in two-talker condition
+bvowel_twomeans <- bvowel_two |> 
+  summarize(f1_mean = mean(f1_mean),
+            f2_mean = mean(f2_mean),
+            .by = vowel)
+
+# plot
+bvowel_two |> 
+  ggplot(aes(x = f2_mean, y = f1_mean, color = vowel, label = vowel)) +
+  geom_point()+
+  geom_label(data = bvowel_twomeans, color = "black") +
+  stat_ellipse() +
+  scale_x_reverse() + scale_y_reverse() +
+  scale_color_discrete(breaks = c("a", "e", "i", "o", "u")) +
+  guides(color = "none") +
+  theme_classic() +
+  labs(
+    title = "Vowel space calculated from all /b/ tokens in two-talker condition",
+    x = "F2",
+    y = "F1"
+  )
+```
+
+## Vowel space for /p/, two-talker condition
+
+```{r}
+#| label: vowel-space-p-two
+
+# subset of data for /b/ in two-talker condition
+pvowel_two <- vowel_data |> 
+  filter(segment == "p" & two_talker == "y")
+
+# df of the mean of each formant for each vowel across talkers w/ /p/ in two-talker condition
+pvowel_twomeans <- pvowel_two |> 
+  summarize(f1_mean = mean(f1_mean),
+            f2_mean = mean(f2_mean),
+            .by = vowel)
+
+# plot
+pvowel_two |> 
+  ggplot(aes(x = f2_mean, y = f1_mean, color = vowel, label = vowel)) +
+  geom_point()+
+  geom_label(data = pvowel_twomeans, color = "black") +
+  stat_ellipse() +
+  scale_x_reverse() + scale_y_reverse() +
+  scale_color_discrete(breaks = c("a", "e", "i", "o", "u")) +
+  guides(color = "none") +
+  theme_classic() +
+  labs(
+    title = "Vowel space calculated from all /p/ tokens in two-talker condition",
+    x = "F2",
+    y = "F1"
+  )
+```
+
