@@ -15,7 +15,7 @@ Instructions for [retrieving the original audio files](raw-data-retrieval-instru
 - [**Final report**](final_report.md): Final report of the project including research motivation, description of data, methods for data wrangling, tidying, and analysis, and final results.
 - [**Data pipeline**](variable-hvpt_data.qmd) (and [md version](variable-hvpt_data.md)): Main data pipeline that combines acoustic measurement data and performs analyses.
 - [sound-files](sound-files/): Folder for housing audio files and segmented TextGrid files.
-- [data](data/): Output datasets from [formant extractor Praat script](formant-extractor-script_edited.praat) and main data pipeline.
+- [data](data/): Output datasets from formant extractor Praat script and main data pipeline.
 - [images](images/): Folder housing image files of plots computed in main data pipeline.
 - [instructions](instructions/): Folder housing instructions for audio file retrieval, conversion, and segmentation.
 - [move-sound-files.sh](move-sound-files.sh): Shell script for extracting audio from .zip files and moving to proper folder.
