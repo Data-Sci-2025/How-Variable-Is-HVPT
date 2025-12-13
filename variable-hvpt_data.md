@@ -236,7 +236,7 @@ allData |>
     Scale for y is already present.
     Adding another scale for y, which will replace the existing scale.
 
-![](variable-hvpt_data_files/figure-commonmark/all-items-by-talker-boxplot-voicing-facet-1.png)
+![](images/all-items-by-talker-boxplot-voicing-facet-1.png)
 
 ``` r
 # make a table of values
@@ -277,7 +277,7 @@ allData |>
        title = "VOT duration (ms) for /b/ by following vowel (all tokens)")
 ```
 
-![](variable-hvpt_data_files/figure-commonmark/b-VOT-by-vowel-all-items-1.png)
+![](images/b-VOT-by-vowel-all-items-1.png)
 
 ``` r
 allData |> 
@@ -290,7 +290,7 @@ allData |>
        title = "VOT duration (ms) for /p/ by following vowel (all tokens)")
 ```
 
-![](variable-hvpt_data_files/figure-commonmark/p-VOT-by-vowel-all-items-1.png)
+![](images/p-VOT-by-vowel-all-items-1.png)
 
 ``` r
 allData |> 
@@ -303,7 +303,7 @@ allData |>
   facet_wrap(~voicing, ncol = 2, labeller = labeller(voicing = voicing_labels))
 ```
 
-![](variable-hvpt_data_files/figure-commonmark/voicing-VOT-by-vowel-all-items-1.png)
+![](images/voicing-VOT-by-vowel-all-items-1.png)
 
 ``` r
 # make data longer so each row has condition info
@@ -335,7 +335,7 @@ allDataLongConditions |>
   facet_wrap(vars(condition, voicing), labeller = labeller(condition = condition_labels, voicing = voicing_labels))
 ```
 
-![](variable-hvpt_data_files/figure-commonmark/vot-by-talker-by-condition-1.png)
+![](images/vot-by-talker-by-condition-1.png)
 
 ``` r
 allDataLongConditions |> 
@@ -348,7 +348,7 @@ allDataLongConditions |>
   facet_wrap(vars(condition), labeller = labeller(condition = condition_labels))
 ```
 
-![](variable-hvpt_data_files/figure-commonmark/vot-by-condition-1.png)
+![](images/vot-by-condition-1.png)
 
 # Vowel Formants
 
@@ -372,7 +372,7 @@ allData |>
        title = "Vowel space: All tokens")
 ```
 
-![](variable-hvpt_data_files/figure-commonmark/vowel-space-all-items-1.png)
+![](images/vowel-space-all-items-1.png)
 
 ``` r
 allData |> 
@@ -390,7 +390,7 @@ allData |>
   facet_wrap(~talker_id, ncol = 2)
 ```
 
-![](variable-hvpt_data_files/figure-commonmark/vowel-space-by-talker-1.png)
+![](images/vowel-space-by-talker-1.png)
 
 ``` r
 # make a table
@@ -428,7 +428,7 @@ allData |>
   facet_wrap(vars(talker_id, voicing), ncol = 2, labeller = labeller(voicing = voicing_labels))
 ```
 
-![](variable-hvpt_data_files/figure-commonmark/vowel-space-by-talker-and-stop-1.png)
+![](images/vowel-space-by-talker-and-stop-1.png)
 
 ``` r
 allData |> 
@@ -447,7 +447,7 @@ ggplot(aes(x = f2_norm, y = f1_norm, color = vowel)) +
   facet_wrap(~voicing, ncol = 2, labeller = labeller(voicing = voicing_labels))
 ```
 
-![](variable-hvpt_data_files/figure-commonmark/vowel-space-by-stop-1.png)
+![](images/vowel-space-by-stop-1.png)
 
 ``` r
 allData |> 
@@ -466,7 +466,7 @@ ggplot(aes(x = f2_norm, y = f1_norm, color = vowel)) +
   facet_wrap(~sex, ncol = 2)
 ```
 
-![](variable-hvpt_data_files/figure-commonmark/vowel-space-by-gender-1.png)
+![](images/vowel-space-by-gender-1.png)
 
 ``` r
 # female talkers
@@ -486,7 +486,7 @@ ggplot(aes(x = f2_norm, y = f1_norm, color = vowel)) +
   facet_wrap(~talker_id, ncol = 2)
 ```
 
-![](variable-hvpt_data_files/figure-commonmark/vowel-space-by-gender-and-talker-1.png)
+![](images/vowel-space-by-gender-and-talker-1.png)
 
 ``` r
 # male talkers
@@ -506,7 +506,7 @@ ggplot(aes(x = f2_norm, y = f1_norm, color = vowel)) +
   facet_wrap(~talker_id, ncol = 2)
 ```
 
-![](variable-hvpt_data_files/figure-commonmark/vowel-space-by-gender-and-talker-2.png)
+![](images/vowel-space-by-gender-and-talker-2.png)
 
 ``` r
 allData |> 
@@ -525,7 +525,7 @@ ggplot(aes(x = f2_norm, y = f1_norm, color = vowel)) +
   facet_wrap(vars(sex, voicing), ncol = 2, labeller = labeller(voicing = voicing_labels))
 ```
 
-![](variable-hvpt_data_files/figure-commonmark/vowel-space-by-gender-and-stop-1.png)
+![](images/vowel-space-by-gender-and-stop-1.png)
 
 ``` r
 allDataLongConditions |> 
@@ -544,7 +544,7 @@ ggplot(aes(x = f2_norm, y = f1_norm, color = vowel)) +
   facet_wrap(~condition, ncol = 2, labeller = labeller(condition = condition_labels))
 ```
 
-![](variable-hvpt_data_files/figure-commonmark/vowel-space-by-condition-1.png)
+![](images/vowel-space-by-condition-1.png)
 
 ``` r
 allDataLongConditions |> 
@@ -563,7 +563,7 @@ ggplot(aes(x = f2_norm, y = f1_norm, color = vowel)) +
   facet_wrap(vars(condition, voicing), ncol = 2, labeller = labeller(condition = condition_labels, voicing = voicing_labels))
 ```
 
-![](variable-hvpt_data_files/figure-commonmark/vowel-space-by-condition-and-stop-1.png)
+![](images/vowel-space-by-condition-and-stop-1.png)
 
 ``` r
 allDataLongConditions |> 
@@ -582,7 +582,7 @@ ggplot(aes(x = f2_norm, y = f1_norm, color = vowel)) +
   facet_wrap(vars(condition, sex), ncol = 2, labeller = labeller(condition = condition_labels))
 ```
 
-![](variable-hvpt_data_files/figure-commonmark/vowel-space-by-condition-and-gender-1.png)
+![](images/vowel-space-by-condition-and-gender-1.png)
 
 ``` r
 allDataLongConditions |> 
@@ -602,7 +602,7 @@ allDataLongConditions |>
   facet_wrap(~condition, ncol = 2, labeller = labeller(condition = condition_labels))
 ```
 
-![](variable-hvpt_data_files/figure-commonmark/vowel-spaces-two-talkers-only-1.png)
+![](images/vowel-spaces-two-talkers-only-1.png)
 
 ``` r
 allDataLongConditions |> 
@@ -621,7 +621,7 @@ allDataLongConditions |>
   facet_wrap(vars(condition, voicing), ncol = 2, labeller = labeller(condition = condition_labels, voicing = voicing_labels))
 ```
 
-![](variable-hvpt_data_files/figure-commonmark/vowel-spaces-two-talkers-only-and-stops-1.png)
+![](images/vowel-spaces-two-talkers-only-and-stops-1.png)
 
 \#f0
 
@@ -638,7 +638,7 @@ allData |>
   facet_wrap(~voicing, ncol = 2, labeller = labeller(voicing = voicing_labels))
 ```
 
-![](variable-hvpt_data_files/figure-commonmark/f0-by-talker-and-stop-1.png)
+![](images/f0-by-talker-and-stop-1.png)
 
 ``` r
 allData |> 
@@ -653,7 +653,7 @@ allData |>
   facet_wrap(~voicing, ncol = 2, labeller = labeller(voicing = voicing_labels))
 ```
 
-![](variable-hvpt_data_files/figure-commonmark/f0-by-vowel-and-gender-1.png)
+![](images/f0-by-vowel-and-gender-1.png)
 
 ``` r
 allDataLongConditions |> 
@@ -668,7 +668,7 @@ allDataLongConditions |>
   facet_wrap(~condition, ncol = 2, labeller = labeller(condition = condition_labels))
 ```
 
-![](variable-hvpt_data_files/figure-commonmark/f0-by-condition-1.png)
+![](images/f0-by-condition-1.png)
 
 # Model
 
