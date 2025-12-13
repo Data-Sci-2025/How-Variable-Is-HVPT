@@ -78,7 +78,6 @@ Temporary Items
 # Mine
 private/
 *.Rproj
-sound-files/
 mp3-files/
 Training Stimuli 6-Talker Group/
 Training Stimuli 6-Talker Group.zip
@@ -89,3 +88,6 @@ scratchpad.qmd
 scratchpad_vowels.qmd
 scratchpad-new.qmd
 graveyard.qmd
+scratchpad-last.qmd
+scratchpad-last.html
+scratchpad-last_files/
