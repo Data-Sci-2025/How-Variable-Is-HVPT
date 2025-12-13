@@ -1,6 +1,9 @@
 ---
 title: "How variable is HVPT input: Data pipeline"
 format: gfm
+knitr:
+  opts_chunk: 
+    fig.path: "images/"
 ---
 
 ```{r}
