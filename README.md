@@ -8,7 +8,7 @@ This is Sarah Schaech's Data Science project investigating the acoustic variabil
 ### Data
 The data used in this project is derived from the training stimuli audio files from [Nagle et al. (2025)](attribution.md). Acoustic measurements such as voice onset time (VOT) of the word-initial stops and formant frequencies, intensity, and f0 of the following vowels were extracted from the audio files using [Praat (Boersma & Weenik, 2025)](praat.org).
 
-Instructions for [retrieving the original audio files](raw-data-retrieval-instructions.md), [converting them to WAV files (for use in Praat)](audio-conversion-instructions.md), and [segmenting them in Praat](praat-segmentation-instructions.md) are included in this repository: See the description of repository contents below.
+Instructions for [retrieving the original audio files](instructions/raw-data-retrieval-instructions.md), [converting them to WAV files (for use in Praat)](instructions/audio-conversion-instructions.md), and [segmenting them in Praat](instructions/praat-segmentation-instructions.md) are included in this repository: See the description of repository contents below.
 
 ### Project Organization
 
