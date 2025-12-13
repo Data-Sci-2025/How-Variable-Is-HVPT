@@ -25,9 +25,9 @@ library(phonR)
 
 Before running this pipeline, you must have already:
 
-1. [Retrieved the raw mp3 audio files](raw-data-retrieval-instructions.md),
-2. [Converted them to wav files](audio-conversion-instructions.md),
-3. [Used Praat to annotate, segment, and extract acoustic measurements.](praat-segmentation-instructions.md)
+1. [Retrieved the raw mp3 audio files](instructions/raw-data-retrieval-instructions.md),
+2. [Converted them to wav files](instructions/audio-conversion-instructions.md),
+3. [Used Praat to annotate, segment, and extract acoustic measurements.](instructions/praat-segmentation-instructions.md)
 
 
 # Read in/Extract data and combine into one dataframe
