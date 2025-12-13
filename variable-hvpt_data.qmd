@@ -17,26 +17,19 @@ library(janitor)
 library(phonR)
 ```
 
+
 # Prerequisites
 
-You must have the software [Praat](https://praat.org/) installed on your machine to produce the acoustic values data.
+Before running this pipeline, you must have already:
+
+1. [Retrieved the raw mp3 audio files](raw-data-retrieval-instructions.md),
+2. [Converted them to wav files](audio-conversion-instructions.md),
+3. [Used Praat to annotate, segment, and extract acoustic measurements.](praat-segmentation-instructions.md)
 
 
-# Audio retrieval and raw data gathering
+# Read in/Extract data and combine into one dataframe
 
-This pipeline uses output from [Praat](https://praat.org/) using the training stimuli audio files from Nagle et al. (2025). These audio files are publicly accessible via their [OSF page](https://osf.io/mnks9/files). **Follow [these](raw-data-retrieval-instructions.md) steps for preparing the sound files for analyses:**
-
-
-# Data transformation and tidying
-
-My goal is to compare VOT durations across speakers used for HVPT stimuli, so in order to get to this point the raw data needs to be transformed and tidied. Thus, I will need a new data frame with the following components:
-
-* Rename columns
-* All empty Praat TextGrid tiers removed
-* New column with VOT duration calculated *in ms*
-    * *Note that lead VOT is negative*
-* Columns for vowel F1, F2
-* Extract information from file names and move to new columns: Talker ID, gender/sex, word produced, and voicing
+## Start with VOT duration data
 
 ```{r}
 #| label: import-data
@@ -49,44 +42,21 @@ functionDur <- function(x) {
 }
 
 # get all TextGrid filepaths
-paths <- list.files("/Users/sarahschaech/Desktop/all_stuff", pattern = "[.]TextGrid$", full.names = TRUE)
+paths <- list.files("sound-files", pattern = "[.]TextGrid$", full.names = TRUE)
+
 
 # make a tibble with the filenames as a column, then map the function onto each to get durations 
 filesDf <- tibble(file = paths)
 
-filesDf <- filesDf |> 
-  mutate(VOT_duration_ms = map_dbl(file, functionDur))
+votData <- filesDf |> 
+  mutate(vot_duration_ms = map_dbl(file, functionDur))
          
 # now rework the filenames using basename()
-filesDf <- filesDf |> 
-  mutate(file = basename(paths), .before = VOT_duration_ms)
-
-# read in formant output
-formants <- read_tsv("/Users/sarahschaech/Desktop/all_stuff/formants_all.txt")
-
-# add row id
-formants <- formants |> 
-  mutate(id = row_number(), .before = phone)
-
-# get filepath names
-formantsFiles <- list.files("/Users/sarahschaech/Desktop/all_stuff", pattern = "[.]TextGrid$", full.names = FALSE)
-
-# make filepath names into df + add id row
-formantsTibble <- tibble(file = formantsFiles)
-
-formantsTibble <- formantsTibble |> 
-  mutate(id = row_number(), .before = file)
-
-# left join the file df and the formants df
-vowelFormants <- formantsTibble |> 
-  left_join(formants)
-
-# left join with the VOT duration data
-all_data <- vowelFormants |> 
-  left_join(filesDf)
+votData <- votData |> 
+  mutate(file = basename(paths), .before = vot_duration_ms)
 
 # extract variables from audio file names
-all_data <- all_data |> 
+votData <- votData |> 
   separate_wider_regex(
     file,
     patterns = c(
@@ -102,21 +72,117 @@ all_data <- all_data |>
   )
 
 # we don't need that rest column
-all_data <- all_data |> 
-  select(!c(rest, id, phone))
+votData <- votData |> 
+  select(!c(rest))
 
 # make duration column into ms
-all_data <- all_data |> 
-  mutate(VOT_duration_ms = VOT_duration_ms*1000, .after = talker_id)
+votData <- votData |> 
+  mutate(vot_duration_ms = vot_duration_ms*1000, .after = talker_id)
+
+# make /b/ VOT negative: it's kind of annoying!
+votDataB <- votData |> 
+  filter(voicing == "voiced") |> 
+  mutate(vot_duration_ms = vot_duration_ms * -1)
+
+votDataP <- votData |> 
+  filter(voicing == "voiceless")
+
+votData <- rbind(votDataB, votDataP)
 
 # add condition information
-all_data <- all_data |> 
+votData <- votData |> 
   mutate(two_talker = ifelse(talker_id == "928" | talker_id == "198", "y", "n"),
          six_talker = ifelse(word != "bacho" & word != "belo" & word != "bicho" & word != "bolo" & word != "bumo" & word != "pacho" & word != "pelo" & word != "picho" & word != "polo" & word != "pumo", "y", "n"))
 
-# clean the formant col names to be safe
-all_data <- clean_names(all_data)
+# clean col names to be safe
+votData <- clean_names(votData)
+
 ```
+
+## Move on to formant data
+
+```{r}
+#| label: read-in-and-normalize-formant-data
+
+formantData <- read_delim("sound-files/formant-data.txt")
+
+# make all column names lowercase for ease/simplicity
+colnames(formantData) <- tolower(colnames(formantData))
+
+# duplicate filename so we can extract the vowel
+formantData <- formantData |> 
+  mutate(file = filename, .before = filename)
+
+# extract the vowel from the filename
+formantData <- formantData |> 
+  separate_wider_regex(
+    file,
+    patterns = c(
+      initial_stop = "^[bp]",
+      vowel = "[aeiou]",
+      rest = "\\S+")
+  )
+
+# extract info from the filenames we kept: don't mind the bug
+formantData <- formantData |> 
+  separate_wider_regex(
+    filename,
+    patterns = c(
+      word = "^[bp].+",
+      "_",
+      voicing = "voiced|voiceless",
+      "_",
+      sex = ".",
+      "_",
+      talker_id = "\\d+"
+      ),
+    too_few = "debug"
+  )
+
+# clean up columns
+formantData <- formantData |> 
+  select(vowel, word:talker_id, f0:intensity_db)
+
+
+# normalize formants
+formantData <- formantData |> 
+  group_by(talker_id) |> 
+  mutate(f1lobanov = normLobanov(f1), 
+         f2lobanov = normLobanov(f2))
+
+# rename the norm columns
+formantData <- formantData |> 
+  rename(f1_norm = f1lobanov,
+         f2_norm = f2lobanov)
+
+# convert matrix lobanov cols into vectors
+formantData$f1_norm <- formantData$f1_norm[,1]
+formantData$f2_norm <- formantData$f2_norm[,1]
+
+```
+
+## Join the dataframes
+
+```{r}
+#| label: join-data-frames
+
+# join dfs
+allData <- formantData |> 
+  left_join(votData)
+
+# fix some names
+allData |> 
+  rename(vowel_duration_ms = duration_ms,
+         vowel_intensity_db = intensity_db)
+
+# change to factor
+allData$voicing <- as.factor(allData$voicing)
+allData$sex <- as.factor(allData$sex)
+allData$talker_id <- as.factor(allData$talker_id)
+allData$vowel <- as.factor(allData$vowel)
+
+```
+
 
 ## Write cleaned data to new file
 
@@ -124,693 +190,474 @@ all_data <- clean_names(all_data)
 #| label: write-data
 
 # note that this is only the cleaned-up version of the full dataset
-write_csv(all_data, "stimuli-acoustics.csv")
-```
-
-# Prepare subsets for analyses
-
-The following are the questions I will be attempting to address with this project:
-
-* To what extent do talkers vary in their productions of word-initial Spanish segments /b/ and /p/? (In other words, how varied are the VOT durations for each segment between talkers and within talkers?)
-* ...between sex?
-* ...between phonetic contexts (following vowel)?
-
-In order to address these, I will need to make subsets of the data where it is grouped in different ways (e.g. a subset).
-
-# VOT Analyses
-
-## Question A: What is the average VOT for /b/ and /p/ per speaker?
-
-First, isolate data for each consonant per talker:
-
-```{r}
-#| label: isolate-b-per-talker
-
-# Talker 007
-
-b007 <- all_data |> 
-  filter(talker_id == "007") |> 
-  filter(voicing == "voiced")
-
-# Talker 863
-
-b863 <- all_data |> 
-  filter(talker_id == "863") |> 
-  filter(voicing == "voiced")
-
-# Talker 928
-
-b928 <- all_data |> 
-  filter(talker_id == "928") |> 
-  filter(voicing == "voiced")
-
-# Talker 198
-
-b198 <- all_data |> 
-  filter(talker_id == "198") |> 
-  filter(voicing == "voiced")
-
-# Talker 355
-
-b355 <- all_data |> 
-  filter(talker_id == "355") |> 
-  filter(voicing == "voiced")
-
-# Talker 377
-
-b377 <- all_data |> 
-  filter(talker_id == "377") |> 
-  filter(voicing == "voiced")
+write_csv(allData, "stimuli-acoustics.csv")
 
 ```
 
-```{r}
-#| label: isolate-p-per-talker
+# Analyses
 
-# Talker 007
+## VOT
 
-p007 <- all_data |> 
-  filter(talker_id == "007") |> 
-  filter(voicing == "voiceless")
-
-# Talker 863
-
-p863 <- all_data |> 
-  filter(talker_id == "863") |> 
-  filter(voicing == "voiceless")
-
-# Talker 928
-
-p928 <- all_data |> 
-  filter(talker_id == "928") |> 
-  filter(voicing == "voiceless")
-
-# Talker 198
-
-p198 <- all_data |> 
-  filter(talker_id == "198") |> 
-  filter(voicing == "voiceless")
-
-# Talker 355
-
-p355 <- all_data |> 
-  filter(talker_id == "355") |> 
-  filter(voicing == "voiceless")
-
-# Talker 377
-
-p377 <- all_data |> 
-  filter(talker_id == "377") |> 
-  filter(voicing == "voiceless")
-```
-
-### What is the average VOT for /b/ per talker (across all 80 tokens)?
-
-Based on the data below, we can see that there is quite a bit of variability between VOT for /b/ per talker. Talker 007 has a very small VOT compared to the rest, and upon further inspection, this is the result of one of their tokens having a very short lead VOT (around -20 ms) compared to other tokens, which is possibly due to the recording quality.
 
 ```{r}
-# get means for each talker for VOT of /b/ and assign to vectors
+#| label: all-items-by-talker-boxplot-voicing-facet
 
-b_names <- c("007", "198", "355", "377", "863", "928")
-b_means <- c(mean(b007$vot_duration_ms), mean(b198$vot_duration_ms), mean(b355$vot_duration_ms), mean(b377$vot_duration_ms), mean(b863$vot_duration_ms), mean(b928$vot_duration_ms))
-
-# use the vectors to make a new df showing the mean VOT for /b/ for each talker
-
-b_VOT_talker <- tibble(
-  talker_id = b_names,
-  mean_VOT = b_means
-)
-```
-
-### What is the average VOT for /p/ per talker (across all 80 tokens)?
-
-Visually, the VOTs for /p/ are much less variable across talkers.
-
-```{r}
-# get means for each talker for VOT of /p/ and assign to vectors
-
-p_names <- c("007", "198", "355", "377", "863", "928")
-p_means <- c(mean(p007$vot_duration_ms), mean(p198$vot_duration_ms), mean(p355$vot_duration_ms), mean(p377$vot_duration_ms), mean(p863$vot_duration_ms), mean(p928$vot_duration_ms))
-
-# use vectors to make a new df showing the mean VOT for /p/ for each talker
-p_VOT_talker <- tibble(
-  talker_id = p_names,
-  mean_VOT = p_means
-)
-```
-
-#### Plot means per talker for each segment
-
-```{r}
-#| label: mean-b-vot-by-talker
-
-# mean /b/ VOT by talker all conditions
-b_VOT_talker |> 
-  ggplot(aes(x = talker_id, y = mean_VOT)) +
-  geom_point(size = 4, color = "darkblue") +
-  theme_bw() +
-  labs(
-    title = "Mean /b/ VOT by talker (all conditions)",
-    x = "Talker",
-    y = "Mean VOT (ms)"
-  )
-```
-
-```{r}
-#| label: mean-p-vot-by-talker
-
-# mean /p/ VOT by talker all conditions
-p_VOT_talker |> 
-  ggplot(aes(x = talker_id, y = mean_VOT)) +
-  geom_point(size = 4, color = "darkred") +
-  theme_bw() +
-  labs(
-    title = "Mean /p/ VOT by talker (all conditions)",
-    x = "Talker",
-    y = "Mean VOT (ms)"
-  )
-```
-
-### What is the average VOT for /b/ per talker in the 6-talker condition? For /p/?
-
-```{r}
-# isolate
-sixb007 <- all_data |> 
-  filter(six_talker == "y" & talker_id == "007" & voicing == "voiced")
-
-sixb198 <- all_data |> 
-  filter(six_talker == "y" & talker_id == "198" & voicing == "voiced")
-
-sixb355 <- all_data |> 
-  filter(six_talker == "y" & talker_id == "355" & voicing == "voiced")
-
-sixb377 <- all_data |> 
-  filter(six_talker == "y" & talker_id == "377" & voicing == "voiced")
-
-sixb863 <- all_data |> 
-  filter(six_talker == "y" & talker_id == "863" & voicing == "voiced")
-
-sixb928 <- all_data |> 
-  filter(six_talker == "y" & talker_id == "928" & voicing == "voiced")
-
-# get means
-sixb_means <- c(mean(sixb007$vot_duration_ms), mean(sixb198$vot_duration_ms), mean(sixb355$vot_duration_ms), mean(sixb377$vot_duration_ms), mean(sixb863$vot_duration_ms), mean(sixb928$vot_duration_ms))
-
-# tibble
-bsix_means <- tibble(
-  talker_id = b_names,
-  mean_VOT = sixb_means
-)
-```
-
-```{r}
-#| label: mean-vot-b-talker-six
-
-
-# plot
-bsix_means |> 
-  ggplot(aes(talker_id, mean_VOT))+
-  geom_point(size = 4, color = "darkblue")+
-  theme_bw() +
-  labs(
-    title = "Mean /b/ VOT by talker (six-talker condition)",
-    x = "Talker",
-    y = "mean VOT (ms)"
-  )
-```
-
-```{r}
-#| label: mean-vot-p-talker-six
-
-## for p
-# isolate
-sixp007 <- all_data |> 
-  filter(six_talker == "y" & talker_id == "007" & voicing == "voiceless")
-
-sixp198 <- all_data |> 
-  filter(six_talker == "y" & talker_id == "198" & voicing == "voiceless")
-
-sixp355 <- all_data |> 
-  filter(six_talker == "y" & talker_id == "355" & voicing == "voiceless")
-
-sixp377 <- all_data |> 
-  filter(six_talker == "y" & talker_id == "377" & voicing == "voiceless")
-
-sixp863 <- all_data |> 
-  filter(six_talker == "y" & talker_id == "863" & voicing == "voiceless")
-
-sixp928 <- all_data |> 
-  filter(six_talker == "y" & talker_id == "928" & voicing == "voiceless")
-
-# get means
-sixp_means <- c(mean(sixp007$vot_duration_ms), mean(sixp198$vot_duration_ms), mean(sixp355$vot_duration_ms), mean(sixp377$vot_duration_ms), mean(sixp863$vot_duration_ms), mean(sixp928$vot_duration_ms))
-
-# make tibble
-psix_means <- tibble(
-  talker_id = b_names,
-  mean_VOT = sixp_means
+# make some labels
+voicing_labels <- c(
+  `voiced` = "/b/",
+  `voiceless` = "/p/"
 )
 
 # plot
-psix_means |> 
-  ggplot(aes(talker_id, mean_VOT))+
-  geom_point(size = 4, color = "darkred")+
+allData |> 
+  ggplot(aes(x = talker_id, y = vot_duration_ms, fill = sex)) +
+  geom_boxplot() +
+  ylim(NA, 100) +
+  scale_y_continuous(breaks = c(-200, -150, -100, -50, 0, 50, 100)) +
+  scale_fill_manual(values = c("skyblue", "lightgoldenrod")) +
   theme_bw() +
-  labs(
-    title = "Mean /p/ VOT by talker (six-talker condition)",
-    x = "Talker",
-    y = "mean VOT (ms)"
-  )
+  labs(x = "Talker",
+       y = "VOT duration (ms)",
+       title = "VOT duration (ms) for /p/-/b/ by talker (all tokens)",
+       fill = "Gender") +
+  facet_wrap(~voicing, ncol = 2, labeller = labeller(voicing = voicing_labels))
+
+
+# make a table of values
+allData |> 
+  group_by(talker_id, voicing) |> 
+  summarize(mean_vot = mean(vot_duration_ms),
+            sd_vot = sd(vot_duration_ms))
 ```
 
+```{r}
+#| label: b-VOT-by-vowel-all-items
 
-### What is the average VOT for /b/ per talker in the 2-talker condition? For /p/?
+allData |> 
+  filter(voicing == "voiced") |> 
+  ggplot(aes(x = vowel, y = vot_duration_ms)) +
+  geom_boxplot() +
+  theme_bw() +
+  labs(x = "Vowel",
+       y = "VOT duration (ms)",
+       title = "VOT duration (ms) for /b/ by following vowel (all tokens)")
+```
 
 ```{r}
-#| label: vot-b-talker-two
+#| label: p-VOT-by-vowel-all-items
 
-# isolate
-twob198 <- all_data |> 
-  filter(two_talker == "y" & talker_id == "198" & voicing == "voiced")
+allData |> 
+  filter(voicing == "voiceless") |> 
+  ggplot(aes(x = vowel, y = vot_duration_ms)) +
+  geom_boxplot() +
+  theme_bw() +
+  labs(x = "Vowel",
+       y = "VOT duration (ms)",
+       title = "VOT duration (ms) for /p/ by following vowel (all tokens)")
+```
 
-twob928 <- all_data |> 
-  filter(two_talker == "y" & talker_id == "928" & voicing == "voiced")
+```{r}
+#| label: voicing-VOT-by-vowel-all-items
 
-# get means
-twob_means <- c(mean(twob198$vot_duration_ms), mean(twob928$vot_duration_ms))
+allData |> 
+  ggplot(aes(x = vowel, y = vot_duration_ms)) +
+  geom_boxplot() +
+  theme_bw() +
+  labs(x = "Vowel",
+       y = "VOT duration (ms)",
+       title = "VOT duration (ms) for /b/-/p/ by following vowel (all tokens)") +
+  facet_wrap(~voicing, ncol = 2, labeller = labeller(voicing = voicing_labels))
+```
 
-# tibble
-btwo_means <- tibble(
-  talker_id = c("198", "928"),
-  mean_VOT = twob_means
+```{r}
+#| label: vot-by-talker-by-condition
+
+# make data longer so each row has condition info
+allDataLong <- allData |> 
+  pivot_longer(!vowel:vot_duration_ms, names_to = "condition", values_to = "condition_true")
+
+allDataLong$condition <- paste(allDataLong$condition, allDataLong$condition_true, sep = "_")
+
+# limit to only "yes" conditions
+allDataLongConditions <- allDataLong |> 
+  filter(condition %in% c("six_talker_y", "two_talker_y"))
+
+# make some labels
+condition_labels <- c(
+  `six_talker_y` = "six-talker",
+  `two_talker_y` = "two-talker"
 )
 
 # plot
-btwo_means |> 
-  ggplot(aes(talker_id, mean_VOT))+
-  geom_point(size = 4, color = "darkblue")+
+allDataLongConditions |> 
+  ggplot(aes(x = talker_id, y = vot_duration_ms, fill = sex)) +
+  geom_boxplot() +
+  scale_fill_manual(values = c("skyblue", "lightgoldenrod")) +
   theme_bw() +
-  labs(
-    title = "Mean /b/ VOT by talker (two-talker condition)",
-    x = "Talker",
-    y = "mean VOT (ms)"
-  )
+  labs(x = "Talker",
+       y = "VOT duration (ms)",
+       title = "VOT duration (ms) by talker and condition",
+       fill = "Gender") +
+  facet_wrap(vars(condition, voicing), labeller = labeller(condition = condition_labels, voicing = voicing_labels))
 ```
 
+
 ```{r}
-#| label: vot-p-talker-two
-## for p
-# isolate
+#| label: vot-by-condition
 
-twop198 <- all_data |> 
-  filter(two_talker == "y" & talker_id == "198" & voicing == "voiceless")
-
-twop928 <- all_data |> 
-  filter(two_talker == "y" & talker_id == "928" & voicing == "voiceless")
-
-# get means
-twop_means <- c(mean(twop198$vot_duration_ms), mean(twop928$vot_duration_ms))
-
-# make tibble
-ptwo_means <- tibble(
-  talker_id = c("198", "928"),
-  mean_VOT = twop_means
-)
-
-# plot
-ptwo_means |> 
-  ggplot(aes(talker_id, mean_VOT))+
-  geom_point(size = 4, color = "darkred")+
+allDataLongConditions |> 
+  ggplot(aes(x = voicing, y = vot_duration_ms)) +
+  geom_boxplot() +
   theme_bw() +
-  labs(
-    title = "Mean /p/ VOT by talker (two-talker condition)",
-    x = "Talker",
-    y = "mean VOT (ms)"
-  )
+  labs(x = "Stop",
+       y = "VOT duration (ms)",
+       title = "VOT duration (ms) by condition") +
+  facet_wrap(vars(condition), labeller = labeller(condition = condition_labels))
+
 ```
 
 
-### What is the average VOT for /b/ per sex? For /p/? (All, 6-talker, 2-talker)
+# Vowel Formants
+
+- NOTE: Vowel space code was developed using [Dr. Marissa Barlaz's Vowel Normalization Workshop.](https://marissabarlaz.github.io/portfolio/vowelnormalization/)
 
 ```{r}
-#| label: vot-b-by-sex-all
+#| label: vowel-space-all-items
 
-### all conditions: /b/
-
-## isolate
-
-female_b <- all_data |> 
-  filter(sex == "f", voicing == "voiced") |> 
-  summarize(mean = mean(vot_duration_ms))
-
-male_b <- all_data |> 
-  filter(sex == "m", voicing == "voiced") |> 
-  summarize(mean = mean(vot_duration_ms))
-
-sexb_vot <- tibble(
-  sex = c("female", "male"),
-  mean_VOT = c(female_b$mean, male_b$mean)
-)
-
-# plot
-sexb_vot |> 
-  ggplot(aes(sex, mean_VOT)) +
-  geom_point(size = 4) +
-  theme_bw() +
-  labs(
-    title = "Mean /b/ VOT by sex (all conditions)",
-    x = "Sex",
-    y = "Mean VOT (ms)"
-  )
-```
-
-```{r}
-#| label: vot-p-by-sex-all
-
-### all conditions /p/
-
-## isolate
-
-female_p <- all_data |> 
-  filter(sex == "f", voicing == "voiceless") |> 
-  summarize(mean = mean(vot_duration_ms))
-
-male_p <- all_data |> 
-  filter(sex == "m", voicing == "voiceless") |> 
-  summarize(mean = mean(vot_duration_ms))
-
-sexp_vot <- tibble(
-  sex = c("female", "male"),
-  mean_VOT = c(female_p$mean, male_p$mean)
-)
-
-# plot
-sexp_vot |> 
-  ggplot(aes(sex, mean_VOT)) +
-  geom_point(size = 4) +
-  theme_bw() +
-  labs(
-    title = "Mean /p/ VOT by sex (all conditions)",
-    x = "Sex",
-    y = "Mean VOT (ms)"
-  )
-```
-
-```{r}
-#| label: vot-b-by-sex-six
-
-### six-talker condition: /b/
-
-## isolate
-
-female_bsix <- all_data |> 
-  filter(sex == "f", voicing == "voiced", six_talker == "y") |> 
-  summarize(mean = mean(vot_duration_ms))
-
-male_bsix <- all_data |> 
-  filter(sex == "m", voicing == "voiced", six_talker == "y") |> 
-  summarize(mean = mean(vot_duration_ms))
-
-sexb_vot6 <- tibble(
-  sex = c("female", "male"),
-  mean_VOT = c(female_bsix$mean, male_bsix$mean)
-)
-
-# plot
-sexb_vot6 |> 
-  ggplot(aes(sex, mean_VOT)) +
-  geom_point(size = 4) +
-  theme_bw() +
-  labs(
-    title = "Mean /b/ VOT by sex (six-talker condition)",
-    x = "Sex",
-    y = "Mean VOT (ms)"
-  )
-```
-
-```{r}
-#| label: vot-p-by-sex-six
-
-### six-talker condition: /p/
-
-## isolate
-
-female_psix <- all_data |> 
-  filter(sex == "f", voicing == "voiceless", six_talker == "y") |> 
-  summarize(mean = mean(vot_duration_ms))
-
-male_psix <- all_data |> 
-  filter(sex == "m", voicing == "voiceless", six_talker == "y") |> 
-  summarize(mean = mean(vot_duration_ms))
-
-sexp_vot6 <- tibble(
-  sex = c("female", "male"),
-  mean_VOT = c(female_psix$mean, male_psix$mean)
-)
-
-# plot
-sexp_vot6 |> 
-  ggplot(aes(sex, mean_VOT)) +
-  geom_point(size = 4) +
-  theme_bw() +
-  labs(
-    title = "Mean /p/ VOT by sex (six-talker condition)",
-    x = "Sex",
-    y = "Mean VOT (ms)"
-  )
-```
-
-```{r}
-#| label: vot-b-by-sex-two
-
-### two-talker condition: /b/
-
-# isolate
-female_btwo <- all_data |> 
-  filter(sex == "f", voicing == "voiced", two_talker == "y") |> 
-  summarize(mean = mean(vot_duration_ms))
-
-male_btwo <- all_data |> 
-  filter(sex == "m", voicing == "voiced", two_talker == "y") |> 
-  summarize(mean = mean(vot_duration_ms))
-
-sexb_vot2 <- tibble(
-  sex = c("female", "male"),
-  mean_VOT = c(female_btwo$mean, male_btwo$mean)
-)
-
-sexb_vot2 |> 
-  ggplot(aes(sex, mean_VOT)) +
-  geom_point(size = 4) +
-  theme_bw() +
-  labs(
-    title = "Mean /b/ VOT by sex (two-talker condition)",
-    x = "Sex",
-    y = "Mean VOT (ms)"
-  )
-```
-
-```{r}
-#| label: vot-p-by-sex-two
-
-### two-talker condition: /p/
-
-# isolate
-female_ptwo <- all_data |> 
-  filter(sex == "f", voicing == "voiceless", two_talker == "y") |> 
-  summarize(mean = mean(vot_duration_ms))
-
-male_ptwo <- all_data |> 
-  filter(sex == "m", voicing == "voiceless", two_talker == "y") |> 
-  summarize(mean = mean(vot_duration_ms))
-
-sexp_vot2 <- tibble(
-  sex = c("female", "male"),
-  mean_VOT = c(female_ptwo$mean, male_ptwo$mean)
-)
-
-sexp_vot2 |> 
-  ggplot(aes(sex, mean_VOT)) +
-  geom_point(size = 4) +
-  theme_bw() +
-  labs(
-    title = "Mean /p/ VOT by sex (two-talker condition)",
-    x = "Sex",
-    y = "Mean VOT (ms)"
-  )
-```
-
-# Vowel Formant Analyses (Vowel spaces)
-
-Vowel space R code sourced and slightly modified from Joey Stanley [(website)](https://joeystanley.com/blog/making-vowel-plots-in-r-part-1/).
-
-## Vowel space per talker, per segment
-
-```{r}
-# add vowel info to all_data
-vowel_data <- all_data |> 
-  separate_wider_regex(
-    word,
-    patterns = c(
-      segment = "^[bp]",
-      vowel = "[aeiou]",
-      right_context = ".+"
-    )
-  )
-
-# get means for all vowels
-vowel_means <- vowel_data |> 
-  summarize(f1_mean = mean(f1_mean),
-            f2_mean = mean(f2_mean),
-            .by = vowel)
-```
-
-```{r}
-#| label: vowel-space-80
-# this plot shows the vowel space for the entire set of speakers for all 80 tokens
-vowel_data |> 
-  ggplot(aes(x = f2_mean, y = f1_mean, color = vowel, label = vowel)) +
-  geom_point()+
-  geom_label(data = vowel_means, color = "black") +
+allData |> 
+  ggplot(aes(x = f2_norm, y = f1_norm, color = vowel)) +
+  geom_point(aes(shape = vowel), alpha = 0.3) +
   stat_ellipse() +
-  scale_x_reverse() + scale_y_reverse() +
-  scale_color_discrete(breaks = c("a", "e", "i", "o", "u")) +
-  guides(color = "none") +
-  theme_classic() +
-  labs(
-    title = "Vowel space calculated from all 80 tokens",
-    x = "F2",
-    y = "F1"
-  )
-
+  theme_bw() +
+  scale_x_reverse() +
+  scale_y_reverse() +
+  geom_text(data = formantData |> 
+  group_by(vowel) |> 
+  summarize_at(vars(f1_norm:f2_norm), mean, na.rm = TRUE), aes(label = vowel), size = 8) +
+  labs(x = "F2 (Lobanov-transformed)",
+       y = "F1 (Lobanov-transformed)",
+       title = "Vowel space: All tokens")
 ```
-
-## Vowel space for /b/, 6-talker condition
 
 ```{r}
-#| label: vowel-space-b-six
+#| label: vowel-space-by-talker
 
+allData |> 
+  ggplot(aes(x = f2_norm, y = f1_norm, color = vowel)) +
+  geom_point(aes(shape = vowel), alpha = 0.3) +
+  theme_bw() +
+  scale_x_reverse() +
+  scale_y_reverse() +
+  geom_text(data = formantData |> 
+  group_by(vowel) |> 
+  summarize_at(vars(f1_norm:f2_norm), mean, na.rm = TRUE), aes(label = vowel), size = 8) +
+  labs(x = "F2 (Lobanov-transformed)",
+       y = "F1 (Lobanov-transformed)",
+       title = "Vowel space by talker") +
+  facet_wrap(~talker_id, ncol = 2)
 
-# subset of data for /b/ in six-talker condition
-bvowel_six <- vowel_data |> 
-  filter(segment == "b" & six_talker == "y")
+# make a table
+allData |> 
+  group_by(vowel) |> 
+  summarize(mean_f1 = mean(f1_norm),
+            sd_f1 = sd(f1_norm),
+            mean_f2 = mean(f2_norm),
+            sd_f2 = mean(f2_norm))
 
-# df of the mean of each formant for each vowel across talkers w/ /b/ in six-talker condition
-bvowel_sixmeans <- bvowel_six |> 
-  summarize(f1_mean = mean(f1_mean),
-            f2_mean = mean(f2_mean),
-            .by = vowel)
-
-# plot
-bvowel_six |> 
-  ggplot(aes(x = f2_mean, y = f1_mean, color = vowel, label = vowel)) +
-  geom_point()+
-  geom_label(data = bvowel_sixmeans, color = "black") +
-  stat_ellipse() +
-  scale_x_reverse() + scale_y_reverse() +
-  scale_color_discrete(breaks = c("a", "e", "i", "o", "u")) +
-  guides(color = "none") +
-  theme_classic() +
-  labs(
-    title = "Vowel space calculated from all /b/ tokens in six-talker condition",
-    x = "F2",
-    y = "F1"
-  )
 ```
-
-## Vowel space for /p/, 6-talker condition
 
 ```{r}
-#| label: vowel-space-p-six
+#| label: vowel-space-by-talker-and-stop
 
-# subset of data for /b/ in six-talker condition
-pvowel_six <- vowel_data |> 
-  filter(segment == "p" & six_talker == "y")
-
-# df of the mean of each formant for each vowel across talkers w/ /p/ in six-talker condition
-pvowel_sixmeans <- pvowel_six |> 
-  summarize(f1_mean = mean(f1_mean),
-            f2_mean = mean(f2_mean),
-            .by = vowel)
-
-# plot
-pvowel_six |> 
-  ggplot(aes(x = f2_mean, y = f1_mean, color = vowel, label = vowel)) +
-  geom_point()+
-  geom_label(data = pvowel_sixmeans, color = "black") +
-  stat_ellipse() +
-  scale_x_reverse() + scale_y_reverse() +
-  scale_color_discrete(breaks = c("a", "e", "i", "o", "u")) +
-  guides(color = "none") +
-  theme_classic() +
-  labs(
-    title = "Vowel space calculated from all /p/ tokens in six-talker condition",
-    x = "F2",
-    y = "F1"
-  )
+# unfortunately this plot ends up practically unreadable
+allData |> 
+  ggplot(aes(x = f2_norm, y = f1_norm, color = vowel)) +
+  geom_point(aes(shape = vowel), alpha = 0.3) +
+  theme_bw() +
+  scale_x_reverse() +
+  scale_y_reverse() +
+  geom_text(data = formantData |> 
+  group_by(vowel) |> 
+  summarize_at(vars(f1_norm:f2_norm), mean, na.rm = TRUE), aes(label = vowel), size = 8) +
+  labs(x = "F2 (Lobanov-transformed)",
+       y = "F1 (Lobanov-transformed)",
+       title = "Vowel space by talker") +
+  facet_wrap(vars(talker_id, voicing), ncol = 2, labeller = labeller(voicing = voicing_labels))
 ```
 
-## Vowel space for /b/, 2-talker condition
 
 ```{r}
-#| label: vowel-space-b-two
+#| label: vowel-space-by-stop
 
-# subset of data for /b/ in two-talker condition
-bvowel_two <- vowel_data |> 
-  filter(segment == "b" & two_talker == "y")
-
-# df of the mean of each formant for each vowel across talkers w/ /b/ in two-talker condition
-bvowel_twomeans <- bvowel_two |> 
-  summarize(f1_mean = mean(f1_mean),
-            f2_mean = mean(f2_mean),
-            .by = vowel)
-
-# plot
-bvowel_two |> 
-  ggplot(aes(x = f2_mean, y = f1_mean, color = vowel, label = vowel)) +
-  geom_point()+
-  geom_label(data = bvowel_twomeans, color = "black") +
+allData |> 
+ggplot(aes(x = f2_norm, y = f1_norm, color = vowel)) +
+  geom_point(aes(shape = vowel), alpha = 0.3) +
   stat_ellipse() +
-  scale_x_reverse() + scale_y_reverse() +
-  scale_color_discrete(breaks = c("a", "e", "i", "o", "u")) +
-  guides(color = "none") +
-  theme_classic() +
-  labs(
-    title = "Vowel space calculated from all /b/ tokens in two-talker condition",
-    x = "F2",
-    y = "F1"
-  )
+  theme_bw() +
+  scale_x_reverse() +
+  scale_y_reverse() +
+  geom_text(data = formantData |> 
+  group_by(vowel) |> 
+  summarize_at(vars(f1_norm:f2_norm), mean, na.rm = TRUE), aes(label = vowel), size = 8) +
+  labs(x = "F2 (Lobanov-transformed)",
+       y = "F1 (Lobanov-transformed)",
+       title = "Vowel space by stop (/b/ and /p/)") +
+  facet_wrap(~voicing, ncol = 2, labeller = labeller(voicing = voicing_labels))
 ```
-
-## Vowel space for /p/, two-talker condition
 
 ```{r}
-#| label: vowel-space-p-two
+#| label: vowel-space-by-gender
 
-# subset of data for /b/ in two-talker condition
-pvowel_two <- vowel_data |> 
-  filter(segment == "p" & two_talker == "y")
-
-# df of the mean of each formant for each vowel across talkers w/ /p/ in two-talker condition
-pvowel_twomeans <- pvowel_two |> 
-  summarize(f1_mean = mean(f1_mean),
-            f2_mean = mean(f2_mean),
-            .by = vowel)
-
-# plot
-pvowel_two |> 
-  ggplot(aes(x = f2_mean, y = f1_mean, color = vowel, label = vowel)) +
-  geom_point()+
-  geom_label(data = pvowel_twomeans, color = "black") +
+allData |> 
+ggplot(aes(x = f2_norm, y = f1_norm, color = vowel)) +
+  geom_point(aes(shape = vowel), alpha = 0.3) +
   stat_ellipse() +
-  scale_x_reverse() + scale_y_reverse() +
-  scale_color_discrete(breaks = c("a", "e", "i", "o", "u")) +
-  guides(color = "none") +
-  theme_classic() +
-  labs(
-    title = "Vowel space calculated from all /p/ tokens in two-talker condition",
-    x = "F2",
-    y = "F1"
-  )
+  theme_bw() +
+  scale_x_reverse() +
+  scale_y_reverse() +
+  geom_text(data = formantData |> 
+  group_by(vowel) |> 
+  summarize_at(vars(f1_norm:f2_norm), mean, na.rm = TRUE), aes(label = vowel), size = 8) +
+  labs(x = "F2 (Lobanov-transformed)",
+       y = "F1 (Lobanov-transformed)",
+       title = "Vowel space by gender") +
+  facet_wrap(~sex, ncol = 2)
 ```
+
+```{r}
+#| label: vowel-space-by-gender-and-talker
+
+# female talkers
+allData |> 
+  filter(sex == "f") |> 
+ggplot(aes(x = f2_norm, y = f1_norm, color = vowel)) +
+  geom_point(aes(shape = vowel), alpha = 0.3) +
+  theme_bw() +
+  scale_x_reverse() +
+  scale_y_reverse() +
+  geom_text(data = formantData |> 
+  group_by(vowel) |> 
+  summarize_at(vars(f1_norm:f2_norm), mean, na.rm = TRUE), aes(label = vowel), size = 8) +
+  labs(x = "F2 (Lobanov-transformed)",
+       y = "F1 (Lobanov-transformed)",
+       title = "Vowel space by gender") +
+  facet_wrap(~talker_id, ncol = 2)
+
+# male talkers
+allData |> 
+  filter(sex == "m") |> 
+ggplot(aes(x = f2_norm, y = f1_norm, color = vowel)) +
+  geom_point(aes(shape = vowel), alpha = 0.3) +
+  theme_bw() +
+  scale_x_reverse() +
+  scale_y_reverse() +
+  geom_text(data = formantData |> 
+  group_by(vowel) |> 
+  summarize_at(vars(f1_norm:f2_norm), mean, na.rm = TRUE), aes(label = vowel), size = 8) +
+  labs(x = "F2 (Lobanov-transformed)",
+       y = "F1 (Lobanov-transformed)",
+       title = "Vowel space by gender") +
+  facet_wrap(~talker_id, ncol = 2)
+```
+
+
+```{r}
+#| label: vowel-space-by-gender-and-stop
+
+allData |> 
+ggplot(aes(x = f2_norm, y = f1_norm, color = vowel)) +
+  geom_point(aes(shape = vowel), alpha = 0.3) +
+  stat_ellipse() +
+  theme_bw() +
+  scale_x_reverse() +
+  scale_y_reverse() +
+  geom_text(data = formantData |> 
+  group_by(vowel) |> 
+  summarize_at(vars(f1_norm:f2_norm), mean, na.rm = TRUE), aes(label = vowel), size = 8) +
+  labs(x = "F2 (Lobanov-transformed)",
+       y = "F1 (Lobanov-transformed)",
+       title = "Vowel space by gender and stop (/b/ and /p/") +
+  facet_wrap(vars(sex, voicing), ncol = 2, labeller = labeller(voicing = voicing_labels))
+```
+
+```{r}
+#| label: vowel-space-by-condition
+
+allDataLongConditions |> 
+ggplot(aes(x = f2_norm, y = f1_norm, color = vowel)) +
+  geom_point(aes(shape = vowel), alpha = 0.3) +
+  stat_ellipse() +
+  theme_bw() +
+  scale_x_reverse() +
+  scale_y_reverse() +
+  geom_text(data = formantData |> 
+  group_by(vowel) |> 
+  summarize_at(vars(f1_norm:f2_norm), mean, na.rm = TRUE), aes(label = vowel), size = 8) +
+  labs(x = "F2 (Lobanov-transformed)",
+       y = "F1 (Lobanov-transformed)",
+       title = "Vowel space by condition") +
+  facet_wrap(~condition, ncol = 2, labeller = labeller(condition = condition_labels))
+```
+
+```{r}
+#| label: vowel-space-by-condition-and-stop
+
+allDataLongConditions |> 
+ggplot(aes(x = f2_norm, y = f1_norm, color = vowel)) +
+  geom_point(aes(shape = vowel), alpha = 0.3) +
+  stat_ellipse() +
+  theme_bw() +
+  scale_x_reverse() +
+  scale_y_reverse() +
+  geom_text(data = formantData |> 
+  group_by(vowel) |> 
+  summarize_at(vars(f1_norm:f2_norm), mean, na.rm = TRUE), aes(label = vowel), size = 8) +
+  labs(x = "F2 (Lobanov-transformed)",
+       y = "F1 (Lobanov-transformed)",
+       title = "Vowel space by condition") +
+  facet_wrap(vars(condition, voicing), ncol = 2, labeller = labeller(condition = condition_labels, voicing = voicing_labels))
+```
+
+```{r}
+#| label: vowel-space-by-condition-and-gender
+
+allDataLongConditions |> 
+ggplot(aes(x = f2_norm, y = f1_norm, color = vowel)) +
+  geom_point(aes(shape = vowel), alpha = 0.3) +
+  stat_ellipse() +
+  theme_bw() +
+  scale_x_reverse() +
+  scale_y_reverse() +
+  geom_text(data = formantData |> 
+  group_by(vowel) |> 
+  summarize_at(vars(f1_norm:f2_norm), mean, na.rm = TRUE), aes(label = vowel), size = 8) +
+  labs(x = "F2 (Lobanov-transformed)",
+       y = "F1 (Lobanov-transformed)",
+       title = "Vowel space by condition") +
+  facet_wrap(vars(condition, sex), ncol = 2, labeller = labeller(condition = condition_labels))
+```
+
+```{r}
+#| label: vowel-spaces-two-talkers-only
+
+allDataLongConditions |> 
+  filter(talker_id == "198" | talker_id == "928") |> 
+  ggplot(aes(x = f2_norm, y = f1_norm, color = vowel)) +
+  geom_point(aes(shape = vowel), alpha = 0.3) +
+  stat_ellipse() +
+  theme_bw() +
+  scale_x_reverse() +
+  scale_y_reverse() +
+  geom_text(data = formantData |> 
+  group_by(vowel) |> 
+  summarize_at(vars(f1_norm:f2_norm), mean, na.rm = TRUE), aes(label = vowel), size = 8) +
+  labs(x = "F2 (Lobanov-transformed)",
+       y = "F1 (Lobanov-transformed)",
+       title = "Vowel spaces for Talker 198 and Talker 928") +
+  facet_wrap(~condition, ncol = 2, labeller = labeller(condition = condition_labels))
+```
+
+```{r}
+#| label: vowel-spaces-two-talkers-only-and-stops
+
+allDataLongConditions |> 
+  filter(talker_id == "198" | talker_id == "928") |> 
+  ggplot(aes(x = f2_norm, y = f1_norm, color = vowel)) +
+  geom_point(aes(shape = vowel), alpha = 0.3) +
+  theme_bw() +
+  scale_x_reverse() +
+  scale_y_reverse() +
+  geom_text(data = formantData |> 
+  group_by(vowel) |> 
+  summarize_at(vars(f1_norm:f2_norm), mean, na.rm = TRUE), aes(label = vowel), size = 8) +
+  labs(x = "F2 (Lobanov-transformed)",
+       y = "F1 (Lobanov-transformed)",
+       title = "Vowel space for Talker 198 and Talker 928 by stop") +
+  facet_wrap(vars(condition, voicing), ncol = 2, labeller = labeller(condition = condition_labels, voicing = voicing_labels))
+```
+
+#f0
+
+```{r}
+#| label: f0-by-talker-and-stop
+
+allData |> 
+  ggplot(aes(x = talker_id, y = f0, fill = sex)) +
+  geom_boxplot() +
+  scale_fill_manual(values = c("skyblue", "lightgoldenrod")) +
+  theme_bw() +
+  labs(x = "Talker",
+       y = "f0 (Hz)",
+       title = "f0 (Hz) by talker",
+       fill = "Gender") +
+  facet_wrap(~voicing, ncol = 2, labeller = labeller(voicing = voicing_labels))
+```
+
+```{r}
+#| label: f0-by-vowel-and-gender
+
+allData |> 
+  ggplot(aes(x = vowel, y = f0, fill = sex)) +
+  geom_boxplot() +
+  scale_fill_manual(values = c("skyblue", "lightgoldenrod")) +
+  theme_bw() +
+  labs(x = "Vowel",
+       y = "f0 (Hz)",
+       title = "f0 (Hz) by gender and vowel",
+       fill = "Gender") +
+  facet_wrap(~voicing, ncol = 2, labeller = labeller(voicing = voicing_labels))
+```
+
+```{r}
+#| label: f0-by-condition
+
+allDataLongConditions |> 
+  ggplot(aes(x = voicing, y = f0, fill = sex)) +
+  geom_boxplot() +
+  scale_fill_manual(values = c("skyblue", "lightgoldenrod")) +
+  theme_bw() +
+  labs(x = "Stop (voicing)",
+       y = "f0 (Hz)",
+       title = "f0 (Hz) by condition",
+       fill = "Gender") +
+  facet_wrap(~condition, ncol = 2, labeller = labeller(condition = condition_labels))
+```
+
+
+# Model
+
+Using binary logistic regression to predict voicing (voiced = "1", voiceless = "0") from other predictor variables.
+
+## Dummy code data
+
+```{r}
+#| label: dummy-code-voicing
+
+
+# dummy code voicing predictor
+allDataModel <- allData
+allDataModel$voicing <- fct_recode(allDataModel$voicing,
+                                   "0" = "voiceless",
+                                   "1" = "voiced")
+```
+
+## Create models
+
+```{r}
+#| label: create-models
+
+# predicting voicing from f0 of vowel
+modelf0 <- glm(formula = voicing ~ f0, family = binomial, data = allDataModel)
+summary(modelf0)
+
+# predicting voicing from f1 of vowel
+modelf1 <- glm(formula = voicing ~ f1_norm, family = binomial, data = allDataModel)
+summary(modelf1)
+```
+
+```{r}
+sessionInfo()
+```
+
+
 
